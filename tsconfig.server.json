@@ -13,5 +13,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["server", "shared", "api", "drizzle.config.ts", "vite.config.ts", "vitest.config.ts"]
+  "include": ["server", "shared", "api", "scripts", "drizzle.config.ts", "vite.config.ts", "vitest.config.ts"]
 }

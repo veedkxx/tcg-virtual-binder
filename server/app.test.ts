@@ -6,10 +6,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import type { CardDetail } from '../shared/schemas.js'
+import type { BinderDetail, BinderSummary, CardDetail, SetDetail } from '../shared/schemas.js'
 import { createApp } from './app.js'
 import { createDb } from './db/client.js'
-import { collectionItems, sessions, users } from './db/schema.js'
+import { binderSlots, binders, collectionItems, sessions, users } from './db/schema.js'
 import { AppError } from './errors.js'
 import { safeReturnTo } from './routes/auth.js'
 import type { GoogleProfile, GoogleProvider } from './services/google.js'
@@ -33,6 +33,21 @@ const fakeCard = (id: string): CardDetail => ({
   set: { id: 'base1', name: 'Base Set', logoUrl: null, cardCount: 102 },
 })
 
+// Coleção falsa com 12 cartas (2 páginas de binder): sv09-001 … sv09-012.
+const fakeSet: SetDetail = {
+  id: 'sv09',
+  name: 'Amigos de Jornada',
+  logoUrl: 'https://assets.example/sv09/logo.webp',
+  symbolUrl: null,
+  cardCount: 12,
+  cards: Array.from({ length: 12 }, (_, i) => {
+    const localId = String(i + 1).padStart(3, '0')
+    return { id: `sv09-${localId}`, localId, name: `Carta ${localId}`, imageUrl: null }
+  }),
+}
+
+let tcgdexUp = true
+
 const cards: CardsProvider = {
   async search({ page, pageSize }) {
     return {
@@ -45,6 +60,24 @@ const cards: CardsProvider = {
   async get({ id }) {
     if (id === 'missing') throw new AppError(404, 'CARD_NOT_FOUND', 'Carta não encontrada.')
     return fakeCard(id)
+  },
+  async listSets() {
+    return [
+      {
+        id: fakeSet.id,
+        name: fakeSet.name,
+        logoUrl: fakeSet.logoUrl,
+        symbolUrl: null,
+        cardCount: 12,
+      },
+    ]
+  },
+  async getSet({ id }) {
+    if (id !== fakeSet.id) throw new AppError(404, 'SET_NOT_FOUND', 'Coleção não encontrada.')
+    return fakeSet
+  },
+  async ping() {
+    if (!tcgdexUp) throw new Error('TCGdex fora do ar')
   },
 }
 
@@ -104,6 +137,7 @@ class Client {
   get = (path: string) => this.fetch(path)
   post = (path: string, body?: unknown) => this.fetch(path, { method: 'POST', body })
   patch = (path: string, body: unknown) => this.fetch(path, { method: 'PATCH', body })
+  put = (path: string, body: unknown) => this.fetch(path, { method: 'PUT', body })
   delete = (path: string) => this.fetch(path, { method: 'DELETE' })
 
   hasCookie = (name: string) => this.jar.has(name)
@@ -113,7 +147,10 @@ async function json<T = Record<string, unknown>>(res: Response): Promise<T> {
   return (await res.json()) as T
 }
 
-type CollectionBody = { items: { cardId: string; quantity: number }[]; totals: Record<string, number> }
+type CollectionBody = {
+  items: { cardId: string; quantity: number }[]
+  totals: Record<string, number>
+}
 type MeBody = { user: { id: string; email: string; name: string | null } | null }
 
 /** Faz o fluxo completo de login (início + retorno do Google) e devolve o cliente logado. */
@@ -168,9 +205,42 @@ afterAll(async () => {
 
 beforeEach(async () => {
   // Ordem importa: filhos antes dos pais.
+  await db.delete(binderSlots)
+  await db.delete(binders)
   await db.delete(collectionItems)
   await db.delete(sessions)
   await db.delete(users)
+})
+
+describe('/api/health', () => {
+  it('responde ok sem tocar em nada por padrão', async () => {
+    const res = await new Client().get('/api/health')
+    expect(res.status).toBe(200)
+    expect(await json(res)).toEqual({ ok: true })
+  })
+
+  it('deep=1 testa banco e TCGdex', async () => {
+    const res = await new Client().get('/api/health?deep=1')
+    expect(res.status).toBe(200)
+    expect(await json(res)).toMatchObject({
+      ok: true,
+      checks: { database: { ok: true }, tcgdex: { ok: true } },
+    })
+  })
+
+  it('deep=1 responde 503 quando o TCGdex está fora', async () => {
+    tcgdexUp = false
+    try {
+      const res = await new Client().get('/api/health?deep=1')
+      expect(res.status).toBe(503)
+      expect(await json(res)).toMatchObject({
+        ok: false,
+        checks: { database: { ok: true }, tcgdex: { ok: false, error: 'TCGdex fora do ar' } },
+      })
+    } finally {
+      tcgdexUp = true
+    }
+  })
 })
 
 describe('catálogo (público)', () => {
@@ -455,5 +525,207 @@ describe('/api/collection', () => {
     const listB = await json<CollectionBody>(await b.get('/api/collection'))
     expect(listA.items[0]?.quantity).toBe(2)
     expect(listB.items[0]?.quantity).toBe(5)
+  })
+})
+
+describe('/api/sets', () => {
+  it('lista as coleções sem login', async () => {
+    const res = await new Client().get('/api/sets')
+    expect(res.status).toBe(200)
+    const body = await json<{ items: { id: string }[] }>(res)
+    expect(body.items.map((s) => s.id)).toEqual(['sv09'])
+  })
+
+  it('detalha uma coleção com as cartas', async () => {
+    const body = await json<SetDetail>(await new Client().get('/api/sets/sv09'))
+    expect(body.cards).toHaveLength(12)
+  })
+
+  it('coleção inexistente dá 404', async () => {
+    expect((await new Client().get('/api/sets/nada')).status).toBe(404)
+  })
+})
+
+describe('/api/binders', () => {
+  type ItemBody = { id: number; cardId: string; quantity: number; binderCount: number }
+  type BinderList = { items: BinderSummary[] }
+
+  async function setup(sub = 'google-a') {
+    const { client } = await loginAs({ sub, email: `${sub}@example.com` })
+    const add = async (cardId: string, quantity = 1) =>
+      json<ItemBody>(await client.post('/api/collection', { cardId, quantity }))
+    const create = async (body: Record<string, unknown>) => {
+      const res = await client.post('/api/binders', body)
+      expect(res.status).toBe(201)
+      return json<BinderSummary>(res)
+    }
+    const detail = async (id: string) => json<BinderDetail>(await client.get(`/api/binders/${id}`))
+    const put = (binderId: string, position: number | string, collectionItemId: number) =>
+      client.put(`/api/binders/${binderId}/slots/${position}`, { collectionItemId })
+    return { client, add, create, detail, put }
+  }
+
+  it('exige login', async () => {
+    const client = new Client()
+    expect((await client.get('/api/binders')).status).toBe(401)
+    expect((await client.post('/api/binders', { name: 'X' })).status).toBe(401)
+  })
+
+  it('cria um binder em branco e coloca cartas em qualquer bolso', async () => {
+    const { add, create, detail, put } = await setup()
+    const pikachu = await add('base1-25')
+    const binder = await create({ name: 'Pikachus' })
+    expect(binder).toMatchObject({ name: 'Pikachus', set: null, filled: 0, templateSize: null })
+
+    // Bolso na página 51: binder em branco não tem limite de páginas.
+    expect((await put(binder.id, 450, pikachu.id)).status).toBe(204)
+    const d = await detail(binder.id)
+    expect(d.slots).toEqual([
+      { position: 450, item: expect.objectContaining({ cardId: 'base1-25', binderCount: 1 }) },
+    ])
+  })
+
+  it('a mesma carta pode estar em vários bolsos e binders; binderCount conta binders', async () => {
+    const { client, add, create, put } = await setup()
+    const pikachu = await add('base1-25')
+    const a = await create({ name: 'A' })
+    const b = await create({ name: 'B' })
+    expect((await put(a.id, 0, pikachu.id)).status).toBe(204)
+    expect((await put(a.id, 1, pikachu.id)).status).toBe(204)
+    expect((await put(b.id, 0, pikachu.id)).status).toBe(204)
+
+    const list = await json<CollectionBody>(await client.get('/api/collection'))
+    expect(list.items[0]).toMatchObject({ quantity: 1, binderCount: 2 })
+
+    const binders = await json<BinderList>(await client.get('/api/binders'))
+    expect(Object.fromEntries(binders.items.map((x) => [x.name, x.filled]))).toEqual({ A: 2, B: 1 })
+  })
+
+  it('trocar a carta do bolso e esvaziar', async () => {
+    const { client, add, create, detail, put } = await setup()
+    const p1 = await add('base1-25')
+    const p2 = await add('base1-58')
+    const binder = await create({ name: 'Trocas' })
+    await put(binder.id, 3, p1.id)
+    await put(binder.id, 3, p2.id)
+    expect((await detail(binder.id)).slots.map((s) => s.item.cardId)).toEqual(['base1-58'])
+
+    expect((await client.delete(`/api/binders/${binder.id}/slots/3`)).status).toBe(204)
+    expect((await client.delete(`/api/binders/${binder.id}/slots/3`)).status).toBe(404)
+    expect((await detail(binder.id)).slots).toEqual([])
+  })
+
+  it('rejeita posição negativa, absurda ou não numérica', async () => {
+    const { add, create, put } = await setup()
+    const p = await add('base1-25')
+    const binder = await create({ name: 'X' })
+    for (const pos of ['-1', '90000', 'abc']) {
+      expect((await put(binder.id, pos, p.id)).status).toBe(400)
+    }
+  })
+
+  it('tirar a carta da coleção esvazia os bolsos dela', async () => {
+    const { client, add, create, detail, put } = await setup()
+    const p = await add('base1-25')
+    const binder = await create({ name: 'X' })
+    await put(binder.id, 0, p.id)
+    await client.delete('/api/collection/base1-25')
+    expect((await detail(binder.id)).slots).toEqual([])
+  })
+
+  it('renomear e apagar (as cartas continuam na coleção)', async () => {
+    const { client, add, create, put } = await setup()
+    const p = await add('base1-25')
+    const binder = await create({ name: 'Velho' })
+    await put(binder.id, 0, p.id)
+
+    expect((await client.patch(`/api/binders/${binder.id}`, { name: 'Novo' })).status).toBe(204)
+    expect((await client.patch(`/api/binders/${binder.id}`, { name: '  ' })).status).toBe(400)
+    const list = await json<BinderList>(await client.get('/api/binders'))
+    expect(list.items[0]?.name).toBe('Novo')
+
+    expect((await client.delete(`/api/binders/${binder.id}`)).status).toBe(204)
+    expect((await client.get(`/api/binders/${binder.id}`)).status).toBe(404)
+    const collection = await json<CollectionBody>(await client.get('/api/collection'))
+    expect(collection.items).toHaveLength(1)
+  })
+
+  it('binder a partir de uma coleção reserva um bolso por carta', async () => {
+    const { create, detail } = await setup()
+    const binder = await create({ name: 'Amigos de Jornada', setId: 'sv09' })
+    expect(binder).toMatchObject({
+      set: { id: 'sv09', name: 'Amigos de Jornada' },
+      filled: 0,
+      templateSize: 12,
+    })
+    const d = await detail(binder.id)
+    expect(d.template?.map((c) => c.id)).toEqual(fakeSet.cards.map((c) => c.id))
+  })
+
+  it('coleção inexistente não cria binder', async () => {
+    const { client } = await setup()
+    expect((await client.post('/api/binders', { name: 'X', setId: 'nada' })).status).toBe(404)
+    const list = await json<BinderList>(await client.get('/api/binders'))
+    expect(list.items).toEqual([])
+  })
+
+  it('fill: true já coloca as cartas que o usuário tem no bolso certo', async () => {
+    const { add, create, detail } = await setup()
+    await add('sv09-003')
+    await add('sv09-010', 2)
+    await add('base1-25') // fora da coleção: ignorada
+    const binder = await create({ name: 'AJ', setId: 'sv09', fill: true })
+    expect(binder.filled).toBe(2)
+    const d = await detail(binder.id)
+    expect(d.slots.map((s) => [s.position, s.item.cardId, s.item.quantity])).toEqual([
+      [2, 'sv09-003', 1],
+      [9, 'sv09-010', 2],
+    ])
+  })
+
+  it('preencher depois só ocupa bolsos vazios e é idempotente', async () => {
+    const { client, add, create } = await setup()
+    const binder = await create({ name: 'AJ', setId: 'sv09' })
+    await add('sv09-001')
+    await add('sv09-005')
+    const fill = async () =>
+      json<{ placed: number }>(await client.post(`/api/binders/${binder.id}/fill`))
+    expect(await fill()).toEqual({ placed: 2 })
+    expect(await fill()).toEqual({ placed: 0 })
+  })
+
+  it('preencher binder em branco dá 400', async () => {
+    const { client, create } = await setup()
+    const binder = await create({ name: 'Livre' })
+    expect((await client.post(`/api/binders/${binder.id}/fill`)).status).toBe(400)
+  })
+
+  it('em binder de coleção, cada bolso só aceita a sua carta', async () => {
+    const { add, create, put } = await setup()
+    const c3 = await add('sv09-003')
+    const binder = await create({ name: 'AJ', setId: 'sv09' })
+
+    expect((await put(binder.id, 2, c3.id)).status).toBe(204)
+    const wrong = await put(binder.id, 0, c3.id)
+    expect(wrong.status).toBe(400)
+    expect(await json(wrong)).toMatchObject({ error: { code: 'WRONG_CARD_FOR_POCKET' } })
+    expect((await put(binder.id, 12, c3.id)).status).toBe(400) // depois da última carta
+  })
+
+  it('isolamento: ninguém vê nem mexe no binder de outro', async () => {
+    const a = await setup('google-a')
+    const binder = await a.create({ name: 'Meu' })
+
+    const b = await setup('google-b')
+    const theirs = await b.add('base1-25')
+
+    expect((await b.client.get(`/api/binders/${binder.id}`)).status).toBe(404)
+    expect((await b.client.patch(`/api/binders/${binder.id}`, { name: 'Hack' })).status).toBe(404)
+    expect((await b.client.delete(`/api/binders/${binder.id}`)).status).toBe(404)
+    expect((await b.put(binder.id, 0, theirs.id)).status).toBe(404)
+    expect((await json<BinderList>(await b.client.get('/api/binders'))).items).toEqual([])
+
+    // E o dono não consegue colocar a carta de outra pessoa no próprio binder.
+    expect((await a.put(binder.id, 0, theirs.id)).status).toBe(404)
   })
 })

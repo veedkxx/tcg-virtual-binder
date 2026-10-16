@@ -3,6 +3,10 @@ import { DEFAULT_LANGUAGE, ENABLED_LANGUAGES } from './languages.js'
 
 export const MAX_QUANTITY = 9999
 export const SEARCH_PAGE_SIZE = 20
+/** Bolsos por página do binder (3x3). */
+export const POCKETS_PER_PAGE = 9
+/** Teto técnico de posições (10 mil páginas); na prática o binder não tem limite. */
+export const MAX_BINDER_POSITION = 10_000 * POCKETS_PER_PAGE - 1
 
 export const LanguageSchema = z.enum(ENABLED_LANGUAGES)
 
@@ -43,6 +47,24 @@ export const CardDetailSchema = CardSummarySchema.extend({
 })
 export type CardDetail = z.infer<typeof CardDetailSchema>
 
+// ---------- Coleções do TCGdex (sets) ----------
+
+export const SetSummarySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  logoUrl: z.string().nullable(),
+  symbolUrl: z.string().nullable(),
+  cardCount: z.number().nullable(),
+})
+export type SetSummary = z.infer<typeof SetSummarySchema>
+
+export const SetListResponseSchema = z.object({ items: z.array(SetSummarySchema) })
+
+export const SetDetailSchema = SetSummarySchema.extend({
+  cards: z.array(CardSummarySchema),
+})
+export type SetDetail = z.infer<typeof SetDetailSchema>
+
 // ---------- Coleção ----------
 
 export const CollectionItemSchema = z.object({
@@ -56,6 +78,8 @@ export const CollectionItemSchema = z.object({
   setName: z.string().nullable(),
   localId: z.string().nullable(),
   rarity: z.string().nullable(),
+  /** Em quantos binders diferentes a carta aparece. */
+  binderCount: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
 })
@@ -69,6 +93,43 @@ export const CollectionResponseSchema = z.object({
   }),
 })
 export type CollectionResponse = z.infer<typeof CollectionResponseSchema>
+
+// ---------- Binders ----------
+
+/** Carta reservada para um bolso de binder criado a partir de uma coleção. */
+export const BinderTemplateCardSchema = CardSummarySchema
+export type BinderTemplateCard = z.infer<typeof BinderTemplateCardSchema>
+
+export const BinderSummarySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  language: LanguageSchema,
+  /** Coleção de origem; null = binder em branco. */
+  set: z.object({ id: z.string(), name: z.string(), logoUrl: z.string().nullable() }).nullable(),
+  /** Bolsos ocupados. */
+  filled: z.number().int(),
+  /** Bolsos reservados pela coleção de origem (null em binder em branco). */
+  templateSize: z.number().int().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+})
+export type BinderSummary = z.infer<typeof BinderSummarySchema>
+
+export const BinderListResponseSchema = z.object({ items: z.array(BinderSummarySchema) })
+
+export const BinderSlotSchema = z.object({
+  position: z.number().int(),
+  item: CollectionItemSchema,
+})
+export type BinderSlot = z.infer<typeof BinderSlotSchema>
+
+export const BinderDetailSchema = BinderSummarySchema.extend({
+  slots: z.array(BinderSlotSchema),
+  template: z.array(BinderTemplateCardSchema).nullable(),
+})
+export type BinderDetail = z.infer<typeof BinderDetailSchema>
+
+export const FillBinderResponseSchema = z.object({ placed: z.number().int() })
 
 // ---------- Usuário ----------
 
@@ -105,4 +166,24 @@ export type AddToCollectionInput = z.input<typeof AddToCollectionSchema>
 
 export const SetQuantitySchema = z.object({
   quantity: QuantitySchema,
+})
+
+const BinderNameSchema = z.string().trim().min(1).max(60)
+
+export const CreateBinderSchema = z.object({
+  name: BinderNameSchema,
+  language: LanguageSchema.default(DEFAULT_LANGUAGE),
+  /** Coleção do TCGdex para usar como molde (opcional). */
+  setId: z.string().trim().min(1).max(40).optional(),
+  /** Com molde: já coloca nos bolsos as cartas que o usuário tem. */
+  fill: z.boolean().default(false),
+})
+export type CreateBinderInput = z.input<typeof CreateBinderSchema>
+
+export const RenameBinderSchema = z.object({ name: BinderNameSchema })
+
+export const BinderPositionSchema = z.coerce.number().int().min(0).max(MAX_BINDER_POSITION)
+
+export const PutSlotSchema = z.object({
+  collectionItemId: z.number().int().positive(),
 })

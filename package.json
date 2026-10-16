@@ -18,7 +18,8 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file=.env server/db/migrate.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "smoke": "tsx scripts/smoke.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.15.0",
