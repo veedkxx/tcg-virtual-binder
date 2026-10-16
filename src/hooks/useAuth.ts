@@ -28,6 +28,7 @@ export function useLogout() {
       qc.setQueryData(authKey, { user: null })
       // Nada da coleção do usuário anterior pode ficar em cache.
       qc.removeQueries({ queryKey: ['collection'] })
+      qc.removeQueries({ queryKey: ['binders'] })
     },
     onError: () => toast.error('Não foi possível sair. Tente de novo.'),
   })

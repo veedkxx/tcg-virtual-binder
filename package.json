@@ -18,11 +18,13 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file=.env server/db/migrate.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "smoke": "tsx scripts/smoke.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.15.0",
     "@radix-ui/react-alert-dialog": "^1.1.0",
+    "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-slot": "^1.1.0",
     "@tanstack/react-query": "^5.60.0",
     "class-variance-authority": "^0.7.1",

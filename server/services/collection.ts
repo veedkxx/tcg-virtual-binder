@@ -3,7 +3,7 @@ import type { Language } from '../../shared/languages.js'
 import { MAX_QUANTITY } from '../../shared/schemas.js'
 import type { CollectionItem, CollectionResponse } from '../../shared/schemas.js'
 import type { Db } from '../db/client.js'
-import { collectionItems, type CollectionItemRow } from '../db/schema.js'
+import { binderSlots, collectionItems, type CollectionItemRow } from '../db/schema.js'
 
 export interface CardSnapshot {
   cardId: string
@@ -16,8 +16,14 @@ export interface CardSnapshot {
   rarity: string | null
 }
 
+/** Em quantos binders distintos o item aparece (subconsulta correlacionada). */
+export const binderCountSql = sql<number>`(
+  select count(distinct ${binderSlots.binderId}) from ${binderSlots}
+  where ${binderSlots.collectionItemId} = ${collectionItems.id}
+)`.mapWith(Number)
+
 // Mapeamento explícito: o user_id nunca sai na resposta da API.
-function toItem(r: CollectionItemRow): CollectionItem {
+export function toItem(r: CollectionItemRow, binderCount: number): CollectionItem {
   return {
     id: r.id,
     cardId: r.cardId,
@@ -29,6 +35,7 @@ function toItem(r: CollectionItemRow): CollectionItem {
     setName: r.setName,
     localId: r.localId,
     rarity: r.rarity,
+    binderCount,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   }
@@ -43,15 +50,23 @@ export function createCollectionService(db: Db) {
       eq(collectionItems.language, language),
     )
 
+  async function withBinderCount(row: CollectionItemRow) {
+    const [r] = await db
+      .select({ binderCount: binderCountSql })
+      .from(collectionItems)
+      .where(eq(collectionItems.id, row.id))
+    return toItem(row, r?.binderCount ?? 0)
+  }
+
   return {
     async list(userId: string, language: Language): Promise<CollectionResponse> {
       const rows = await db
-        .select()
+        .select({ row: collectionItems, binderCount: binderCountSql })
         .from(collectionItems)
         .where(and(eq(collectionItems.userId, userId), eq(collectionItems.language, language)))
         .orderBy(desc(collectionItems.updatedAt), desc(collectionItems.id))
 
-      const items = rows.map(toItem)
+      const items = rows.map((r) => toItem(r.row, r.binderCount))
       return {
         items,
         totals: {
@@ -74,7 +89,7 @@ export function createCollectionService(db: Db) {
           },
         })
         .returning()
-      return toItem(row!)
+      return withBinderCount(row!)
     },
 
     /** Define a quantidade exata. Retorna null se a carta não está na coleção do usuário. */
@@ -84,7 +99,7 @@ export function createCollectionService(db: Db) {
         .set({ quantity, updatedAt: sql`CURRENT_TIMESTAMP` })
         .where(key(userId, cardId, language))
         .returning()
-      return row ? toItem(row) : null
+      return row ? withBinderCount(row) : null
     },
 
     /** Retorna true se algo foi removido. */

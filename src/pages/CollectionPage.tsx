@@ -76,6 +76,11 @@ export function CollectionPage() {
                   .filter(Boolean)
                   .join(' · ')}
               </p>
+              {item.binderCount > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Em {item.binderCount} {item.binderCount === 1 ? 'binder' : 'binders'}
+                </p>
+              )}
             </div>
             <QuantityStepper
               value={item.quantity}
