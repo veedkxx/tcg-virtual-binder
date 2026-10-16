@@ -1,6 +1,10 @@
-import { Library, Search } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { Library, LogIn, LogOut, Search } from 'lucide-react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import type { User } from '../../shared/schemas'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { loginUrl, useAuth, useLogout } from '@/hooks/useAuth'
 import { useCollection } from '@/hooks/useCollection'
 import { cn } from '@/lib/utils'
 
@@ -10,6 +14,60 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? 'bg-accent text-accent-foreground' : 'text-muted-foreground',
   )
 
+function UserAvatar({ user }: { user: User }) {
+  const initial = (user.name ?? user.email).charAt(0).toUpperCase()
+  return user.avatarUrl ? (
+    <img
+      src={user.avatarUrl}
+      alt=""
+      // O Google recusa algumas fotos quando a requisição traz o referer do site.
+      referrerPolicy="no-referrer"
+      className="size-8 rounded-full bg-muted object-cover"
+    />
+  ) : (
+    <span className="flex size-8 items-center justify-center rounded-full bg-muted text-sm font-medium">
+      {initial}
+    </span>
+  )
+}
+
+function AccountArea() {
+  const { user, isLoading } = useAuth()
+  const logout = useLogout()
+  const location = useLocation()
+
+  if (isLoading) return <div className="size-8" aria-hidden />
+
+  if (!user) {
+    return (
+      <Button asChild size="sm">
+        <a href={loginUrl(location.pathname + location.search)}>
+          <LogIn /> Entrar
+        </a>
+      </Button>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <span title={user.email}>
+        <UserAvatar user={user} />
+      </span>
+      <span className="hidden max-w-32 truncate text-sm sm:inline">{user.name ?? user.email}</span>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => logout.mutate()}
+        disabled={logout.isPending}
+        aria-label="Sair"
+        title="Sair"
+      >
+        <LogOut />
+      </Button>
+    </div>
+  )
+}
+
 export function Layout() {
   const { data } = useCollection()
   const total = data?.totals.totalCards
@@ -17,18 +75,20 @@ export function Layout() {
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
+        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-2 px-4">
           <span className="font-semibold">TCG Binder</span>
           <nav className="flex items-center gap-1">
-            <NavLink to="/" end className={linkClass}>
+            <NavLink to="/" end className={linkClass} aria-label="Buscar">
               <Search className="size-4" />
-              Buscar
+              <span className="hidden sm:inline">Buscar</span>
             </NavLink>
-            <NavLink to="/collection" className={linkClass}>
+            <NavLink to="/collection" className={linkClass} aria-label="Coleção">
               <Library className="size-4" />
-              Coleção
+              <span className="hidden sm:inline">Coleção</span>
               {total ? <Badge variant="secondary">{total}</Badge> : null}
             </NavLink>
+            <ThemeToggle />
+            <AccountArea />
           </nav>
         </div>
       </header>

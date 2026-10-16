@@ -1,11 +1,12 @@
-import { ArrowLeft, Check, Plus } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { ArrowLeft, Check, LogIn, Plus } from 'lucide-react'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { CardImage } from '@/components/CardImage'
 import { QuantityStepper } from '@/components/QuantityStepper'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { loginUrl, useAuth } from '@/hooks/useAuth'
 import { useCard } from '@/hooks/useCards'
 import {
   useAddToCollection,
@@ -17,6 +18,8 @@ import { useUiStore } from '@/store/ui'
 
 export function CardPage() {
   const { id = '' } = useParams()
+  const location = useLocation()
+  const { user, isLoading: authLoading } = useAuth()
   const card = useCard(id)
   const collection = useCollection()
 
@@ -99,7 +102,15 @@ export function CardPage() {
               <CardTitle>Coleção</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-wrap items-center gap-4">
-              {owned ? (
+              {authLoading ? (
+                <Skeleton className="h-9 w-48" />
+              ) : !user ? (
+                <Button asChild>
+                  <a href={loginUrl(location.pathname + location.search)}>
+                    <LogIn /> Entrar para adicionar à coleção
+                  </a>
+                </Button>
+              ) : owned ? (
                 <>
                   <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
                     <Check className="size-4" /> Na sua coleção
