@@ -70,6 +70,19 @@ export const CollectionResponseSchema = z.object({
 })
 export type CollectionResponse = z.infer<typeof CollectionResponseSchema>
 
+// ---------- Usuário ----------
+
+export const UserSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
+})
+export type User = z.infer<typeof UserSchema>
+
+// `user: null` = ninguém logado (resposta 200, não erro).
+export const MeResponseSchema = z.object({ user: UserSchema.nullable() })
+
 // ---------- Inputs (validados no servidor, reutilizáveis no cliente) ----------
 
 const QuantitySchema = z.number().int().min(1).max(MAX_QUANTITY)

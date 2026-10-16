@@ -1,9 +1,26 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="dark" style="color-scheme: dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
     <title>TCG Binder</title>
+    <style>
+      /* Evita o flash de fundo antes do CSS da aplicação carregar. */
+      html { background: #fff; }
+      html.dark { background: #0a0a0a; }
+    </style>
+    <script>
+      // Aplica o tema antes da primeira pintura. Padrão: escuro; só vira claro se o usuário escolheu.
+      // Mantenha a chave ("theme") e a regra em sincronia com src/lib/theme.ts.
+      try {
+        var dark = localStorage.getItem('theme') !== 'light'
+        document.documentElement.classList.toggle('dark', dark)
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+      } catch (e) {
+        // Sem acesso ao localStorage: fica no padrão escuro definido no <html>.
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,8 +1,7 @@
-import { createApp } from './app.js'
-import { db } from './db/index.js'
 import { env } from './env.js'
-import { tcgdex } from './services/tcgdex.js'
+import { createRuntimeApp } from './runtime.js'
 
-createApp({ db, cards: tcgdex }).listen(env.PORT, () => {
+createRuntimeApp().listen(env.PORT, () => {
   console.log(`API em http://localhost:${env.PORT}  (db: ${env.TURSO_DATABASE_URL})`)
+  console.log(`App em ${env.APP_URL}  (login: ${env.GOOGLE_CLIENT_ID ? 'configurado' : 'sem credenciais do Google'})`)
 })

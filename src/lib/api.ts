@@ -5,6 +5,7 @@ import {
   CardSearchResponseSchema,
   CollectionItemSchema,
   CollectionResponseSchema,
+  MeResponseSchema,
   type AddToCollectionInput,
 } from '../../shared/schemas'
 
@@ -44,6 +45,11 @@ const qs = (params: Record<string, string | number>) =>
   new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString()
 
 export const api = {
+  // O login em si é uma navegação (GET /api/auth/google), não uma chamada fetch.
+  getMe: () => request('/api/auth/me', MeResponseSchema),
+
+  logout: () => request('/api/auth/logout', z.undefined(), { method: 'POST' }),
+
   searchCards: (q: string, page: number, lang: Language) =>
     request(`/api/cards?${qs({ q, page, lang })}`, CardSearchResponseSchema),
 

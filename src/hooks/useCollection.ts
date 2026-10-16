@@ -1,16 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import type { Language } from '../../shared/languages'
 import type { CollectionResponse } from '../../shared/schemas'
+import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import { useUiStore } from '@/store/ui'
 
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : 'Algo deu errado.')
 
+// O id do usuário faz parte da chave: trocar de conta nunca mostra a coleção da anterior.
+const collectionKey = (userId: string | undefined, language: Language) =>
+  ['collection', userId, language] as const
+
+/** Coleção do usuário logado. Sem login a consulta fica desligada (data = undefined). */
 export function useCollection() {
   const language = useUiStore((s) => s.language)
+  const { user } = useAuth()
   return useQuery({
-    queryKey: ['collection', language],
+    queryKey: collectionKey(user?.id, language),
     queryFn: () => api.getCollection(language),
+    enabled: Boolean(user),
   })
 }
 
@@ -33,7 +42,8 @@ export function useAddToCollection() {
 export function useSetQuantity() {
   const qc = useQueryClient()
   const language = useUiStore((s) => s.language)
-  const key = ['collection', language] as const
+  const { user } = useAuth()
+  const key = collectionKey(user?.id, language)
 
   return useMutation({
     mutationFn: ({ cardId, quantity }: { cardId: string; quantity: number }) =>
