@@ -34,7 +34,10 @@ export function useAddToCollection() {
       toast.success(`${item.name} adicionada (agora você tem ${item.quantity}).`)
     },
     onError: (e) => toast.error(errorMessage(e)),
-    onSettled: () => qc.invalidateQueries({ queryKey: ['collection'] }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['collection'] })
+      void qc.invalidateQueries({ queryKey: ['binders'] })
+    },
   })
 }
 
@@ -67,7 +70,10 @@ export function useSetQuantity() {
       if (ctx?.previous) qc.setQueryData(key, ctx.previous)
       toast.error(errorMessage(e))
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: key }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: key })
+      void qc.invalidateQueries({ queryKey: ['binders'] })
+    },
   })
 }
 
@@ -80,6 +86,9 @@ export function useRemoveFromCollection() {
       api.removeFromCollection(cardId, language),
     onSuccess: (_data, { name }) => toast(`${name} removida da coleção.`),
     onError: (e) => toast.error(errorMessage(e)),
-    onSettled: () => qc.invalidateQueries({ queryKey: ['collection'] }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['collection'] })
+      void qc.invalidateQueries({ queryKey: ['binders'] })
+    },
   })
 }

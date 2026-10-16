@@ -1,4 +1,4 @@
-import { Library, LogIn, LogOut, Search } from 'lucide-react'
+import { BookOpen, Library, LogIn, LogOut, Search } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import type { User } from '../../shared/schemas'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   cn(
-    'inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent',
+    'inline-flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors hover:bg-accent sm:px-3',
     isActive ? 'bg-accent text-accent-foreground' : 'text-muted-foreground',
   )
 
@@ -76,8 +76,10 @@ export function Layout() {
     <div className="min-h-dvh">
       <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-2 px-4">
-          <span className="font-semibold">TCG Binder</span>
-          <nav className="flex items-center gap-1">
+          <span className="shrink-0 font-semibold">
+            TCG<span className="hidden sm:inline"> Binder</span>
+          </span>
+          <nav className="flex items-center gap-0.5 sm:gap-1">
             <NavLink to="/" end className={linkClass} aria-label="Buscar">
               <Search className="size-4" />
               <span className="hidden sm:inline">Buscar</span>
@@ -86,6 +88,10 @@ export function Layout() {
               <Library className="size-4" />
               <span className="hidden sm:inline">Coleção</span>
               {total ? <Badge variant="secondary">{total}</Badge> : null}
+            </NavLink>
+            <NavLink to="/binders" className={linkClass} aria-label="Binders">
+              <BookOpen className="size-4" />
+              <span className="hidden sm:inline">Binders</span>
             </NavLink>
             <ThemeToggle />
             <AccountArea />

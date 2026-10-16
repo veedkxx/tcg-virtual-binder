@@ -4,6 +4,8 @@ import { Toaster } from 'sonner'
 import { Layout } from '@/components/Layout'
 import { RequireAuth } from '@/components/RequireAuth'
 import { useTheme } from '@/lib/theme'
+import { BinderPage } from '@/pages/BinderPage'
+import { BindersPage } from '@/pages/BindersPage'
 import { CardPage } from '@/pages/CardPage'
 import { CollectionPage } from '@/pages/CollectionPage'
 import { LoginPage } from '@/pages/LoginPage'
@@ -32,6 +34,8 @@ export function App() {
             <Route path="login" element={<LoginPage />} />
             <Route element={<RequireAuth />}>
               <Route path="collection" element={<CollectionPage />} />
+              <Route path="binders" element={<BindersPage />} />
+              <Route path="binders/:id" element={<BinderPage />} />
             </Route>
             <Route
               path="*"

@@ -78,3 +78,86 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+/* ---------- Carta com inclinação (TiltCard) ---------- */
+
+.tilt-scene {
+  perspective: 900px;
+}
+
+.tilt-card {
+  --rx: 0deg;
+  --ry: 0deg;
+  --gx: 50%;
+  --gy: 50%;
+  --glare: 0;
+  position: relative;
+  transform: rotateX(var(--rx)) rotateY(var(--ry));
+  transform-style: preserve-3d;
+  transition: transform 120ms ease-out;
+  will-change: transform;
+}
+
+.tilt-glare {
+  position: absolute;
+  inset: 0;
+  border-radius: calc(var(--radius) + 4px);
+  pointer-events: none;
+  mix-blend-mode: soft-light;
+  opacity: var(--glare);
+  transition: opacity 200ms ease-out;
+  background:
+    radial-gradient(circle at var(--gx) var(--gy), rgb(255 255 255 / 0.75), transparent 55%),
+    linear-gradient(
+      115deg,
+      transparent 20%,
+      rgb(255 0 128 / 0.25) 35%,
+      rgb(0 200 255 / 0.25) 50%,
+      rgb(255 230 0 / 0.25) 65%,
+      transparent 80%
+    );
+  background-size:
+    100% 100%,
+    200% 200%;
+  background-position:
+    center,
+    var(--gx) var(--gy);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tilt-card {
+    transform: none;
+    transition: none;
+  }
+}
+
+/* ---------- Virar página do binder ---------- */
+
+@keyframes binder-in-next {
+  from {
+    opacity: 0;
+    transform: translateX(24px) rotateY(-6deg);
+  }
+}
+
+@keyframes binder-in-prev {
+  from {
+    opacity: 0;
+    transform: translateX(-24px) rotateY(6deg);
+  }
+}
+
+.binder-flip-next {
+  animation: binder-in-next 260ms ease-out;
+}
+
+.binder-flip-prev {
+  animation: binder-in-prev 260ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .binder-flip-next,
+  .binder-flip-prev {
+    animation: none;
+  }
+}

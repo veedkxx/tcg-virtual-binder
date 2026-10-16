@@ -1,12 +1,18 @@
 import { z } from 'zod'
 import type { Language } from '../../shared/languages'
 import {
+  BinderDetailSchema,
+  BinderListResponseSchema,
+  BinderSummarySchema,
   CardDetailSchema,
   CardSearchResponseSchema,
   CollectionItemSchema,
   CollectionResponseSchema,
+  FillBinderResponseSchema,
   MeResponseSchema,
+  SetListResponseSchema,
   type AddToCollectionInput,
+  type CreateBinderInput,
 } from '../../shared/schemas'
 
 export class ApiError extends Error {
@@ -70,6 +76,41 @@ export const api = {
 
   removeFromCollection: (cardId: string, lang: Language) =>
     request(`/api/collection/${encodeURIComponent(cardId)}?${qs({ lang })}`, z.undefined(), {
+      method: 'DELETE',
+    }),
+
+  listSets: (lang: Language) => request(`/api/sets?${qs({ lang })}`, SetListResponseSchema),
+
+  listBinders: (lang: Language) =>
+    request(`/api/binders?${qs({ lang })}`, BinderListResponseSchema),
+
+  getBinder: (id: string) => request(`/api/binders/${encodeURIComponent(id)}`, BinderDetailSchema),
+
+  createBinder: (input: CreateBinderInput) =>
+    request('/api/binders', BinderSummarySchema, { method: 'POST', body: input }),
+
+  renameBinder: (id: string, name: string) =>
+    request(`/api/binders/${encodeURIComponent(id)}`, z.undefined(), {
+      method: 'PATCH',
+      body: { name },
+    }),
+
+  deleteBinder: (id: string) =>
+    request(`/api/binders/${encodeURIComponent(id)}`, z.undefined(), { method: 'DELETE' }),
+
+  fillBinder: (id: string) =>
+    request(`/api/binders/${encodeURIComponent(id)}/fill`, FillBinderResponseSchema, {
+      method: 'POST',
+    }),
+
+  putSlot: (id: string, position: number, collectionItemId: number) =>
+    request(`/api/binders/${encodeURIComponent(id)}/slots/${position}`, z.undefined(), {
+      method: 'PUT',
+      body: { collectionItemId },
+    }),
+
+  clearSlot: (id: string, position: number) =>
+    request(`/api/binders/${encodeURIComponent(id)}/slots/${position}`, z.undefined(), {
       method: 'DELETE',
     }),
 }
