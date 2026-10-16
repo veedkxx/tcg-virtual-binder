@@ -6,11 +6,19 @@ const optionalString = z
   .optional()
   .transform((v) => v?.trim() || undefined)
 
-/** URL pública do app: base do redirecionamento do Google e decide se os cookies levam Secure. */
-function resolveAppUrl(explicit: string | undefined) {
-  const vercelProd = process.env.VERCEL_PROJECT_PRODUCTION_URL
+/**
+ * URL pública do app: base do redirecionamento do Google e decide se os cookies levam Secure.
+ * Só a origem é usada: um APP_URL colado com caminho (ex.: ".../api/auth/google/callback")
+ * duplicaria o caminho no redirect_uri e o Google responderia redirect_uri_mismatch.
+ */
+export function resolveAppUrl(explicit: string | undefined, vercelProd?: string) {
   const url = explicit ?? (vercelProd ? `https://${vercelProd}` : 'http://localhost:5173')
-  return url.replace(/\/+$/, '')
+  const origin = URL.canParse(url) ? new URL(url).origin : 'null'
+  // "localhost:5173" sem http:// vira protocolo "localhost:" e origem "null".
+  if (origin === 'null') {
+    throw new Error(`APP_URL inválida: "${url}". Use só a origem, ex.: https://meu-app.vercel.app`)
+  }
+  return origin
 }
 
 const EnvSchema = z
@@ -29,6 +37,7 @@ const EnvSchema = z
       'Na Vercel o sistema de arquivos é efêmero: configure TURSO_DATABASE_URL (libsql://...) e TURSO_AUTH_TOKEN.',
     path: ['TURSO_DATABASE_URL'],
   })
-  .transform((e) => ({ ...e, APP_URL: resolveAppUrl(e.APP_URL) }))
+  .transform((e) => ({ ...e, APP_URL: resolveAppUrl(e.APP_URL, process.env.VERCEL_PROJECT_PRODUCTION_URL),
+  }))
 
 export const env = EnvSchema.parse(process.env)

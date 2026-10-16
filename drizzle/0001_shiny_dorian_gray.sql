@@ -17,5 +17,8 @@ CREATE TABLE `users` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `users_google_id_unique` ON `users` (`google_id`);--> statement-breakpoint
 DROP INDEX `collection_items_card_lang_uq`;--> statement-breakpoint
+-- Itens da Sprint 1 não têm dono e o SQLite não aceita ADD COLUMN NOT NULL sem default em
+-- tabela com linhas. Eram dados de teste: são descartados.
+DELETE FROM `collection_items`;--> statement-breakpoint
 ALTER TABLE `collection_items` ADD `user_id` text NOT NULL REFERENCES users(id);--> statement-breakpoint
 CREATE UNIQUE INDEX `collection_items_user_card_lang_uq` ON `collection_items` (`user_id`,`card_id`,`language`);
