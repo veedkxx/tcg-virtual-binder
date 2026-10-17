@@ -1,7 +1,12 @@
 import { useState } from 'react'
 import { ArrowLeftRight, ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { DEFAULT_CONDITION, type Condition, type Variant } from '../../../shared/copies'
+import {
+  DEFAULT_CONDITION,
+  VARIANT_LABELS,
+  type Condition,
+  type Variant,
+} from '../../../shared/copies'
 import type { AddToPocketInput, BinderTemplateCard, CollectionItem } from '../../../shared/schemas'
 import { ConditionSelect, CopyBadges, VariantPicker } from '@/components/CopyControls'
 import { QuantityStepper } from '@/components/QuantityStepper'
@@ -174,14 +179,18 @@ function MissingInfo({
   const [variant, setVariant] = useState<Variant | undefined>()
   const [condition, setCondition] = useState<Condition>(DEFAULT_CONDITION)
   const [quantity, setQuantity] = useState(1)
-  const variants = detail.data?.variants ?? []
+  // Bolso de Master Set já define a variante; nos outros, escolhe entre as impressas.
+  const variants = card.variant ? [card.variant] : (detail.data?.variants ?? [])
   const chosen = variant ?? variants[0]
 
   return (
     <>
       <DialogHeader>
         <DialogTitle className="text-2xl">{card.name}</DialogTitle>
-        <DialogDescription>#{card.localId} · você ainda não tem esta carta</DialogDescription>
+        <DialogDescription>
+          #{card.localId}
+          {card.variant && ` · ${VARIANT_LABELS[card.variant]}`} · você ainda não tem esta carta
+        </DialogDescription>
       </DialogHeader>
       {detail.isPending ? (
         <Skeleton className="h-8 w-48" />

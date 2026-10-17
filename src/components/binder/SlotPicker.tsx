@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { compareCopies } from '../../../shared/copies'
+import { compareCopies, type Variant } from '../../../shared/copies'
 import type { CollectionItem } from '../../../shared/schemas'
 import { CardImage } from '@/components/CardImage'
 import { CopyBadges } from '@/components/CopyControls'
@@ -24,26 +24,30 @@ interface Props {
   /** Página e bolso (1-based) só para o título. */
   label: string
   onPick: (item: CollectionItem) => void
-  /** Binder de coleção: o bolso só aceita cópias desta carta. */
+  /** Binder de coleção: o bolso só aceita cópias desta carta (e desta variante, no Master Set). */
   onlyCardId?: string
+  onlyVariant?: Variant
 }
 
 const normalize = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
 /** Escolhe uma cópia da coleção para um bolso. */
-export function SlotPicker({ open, onOpenChange, label, onPick, onlyCardId }: Props) {
+export function SlotPicker({ open, onOpenChange, label, onPick, onlyCardId, onlyVariant }: Props) {
   const collection = useCollection()
   const [query, setQuery] = useState('')
 
   const items = useMemo(() => {
     const q = normalize(query.trim())
-    const all = (collection.data?.items ?? []).filter((i) => !onlyCardId || i.cardId === onlyCardId)
+    const all = (collection.data?.items ?? []).filter(
+      (i) =>
+        (!onlyCardId || i.cardId === onlyCardId) && (!onlyVariant || i.variant === onlyVariant),
+    )
     if (onlyCardId) all.sort(compareCopies)
     if (!q) return all
     return all.filter((i) =>
       normalize([i.name, i.setName, i.localId, i.cardId].filter(Boolean).join(' ')).includes(q),
     )
-  }, [collection.data, query, onlyCardId])
+  }, [collection.data, query, onlyCardId, onlyVariant])
 
   return (
     <Dialog

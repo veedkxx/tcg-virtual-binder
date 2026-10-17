@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm'
-import { compareCopies } from '../../shared/copies.js'
+import { compareCopies, VARIANT_LABELS } from '../../shared/copies.js'
 import type { Language } from '../../shared/languages.js'
 import type {
   BinderDetail,
   BinderSummary,
   BinderTemplateCard,
-  SetDetail,
+  SetSummary,
 } from '../../shared/schemas.js'
+import type { SetType } from '../../shared/setTypes.js'
 import type { Db } from '../db/client.js'
 import { binderSlots, binders, collectionItems, type BinderRow } from '../db/schema.js'
 import { AppError } from '../errors.js'
@@ -21,6 +22,7 @@ function toSummary(b: BinderRow, filled: number): BinderSummary {
     name: b.name,
     language: b.language as Language,
     set: b.setId ? { id: b.setId, name: b.setName ?? b.setId, logoUrl: b.setLogoUrl } : null,
+    setType: b.setType ?? null,
     filled,
     templateSize: b.template?.length ?? null,
     createdAt: b.createdAt,
@@ -82,13 +84,16 @@ export function createBindersService(db: Db) {
     ])
 
     // Com várias cópias da mesma carta, vai a mais comum em melhor estado (normal NM primeiro).
-    const itemByCard = new Map<string, number>()
+    // Bolso com variante (Master Set) só aceita aquela variante; sem variante, vale a melhor cópia.
+    const itemByKey = new Map<string, number>()
     for (const i of [...items].sort(compareCopies)) {
-      if (!itemByCard.has(i.cardId)) itemByCard.set(i.cardId, i.id)
+      for (const key of [i.cardId, `${i.cardId}|${i.variant}`]) {
+        if (!itemByKey.has(key)) itemByKey.set(key, i.id)
+      }
     }
     const takenPositions = new Set(taken.map((t) => t.position))
     const rows = template.flatMap((card, position) => {
-      const collectionItemId = itemByCard.get(card.id)
+      const collectionItemId = itemByKey.get(card.variant ? `${card.id}|${card.variant}` : card.id)
       return collectionItemId && !takenPositions.has(position)
         ? [{ binderId: b.id, position, collectionItemId }]
         : []
@@ -113,11 +118,17 @@ export function createBindersService(db: Db) {
       return rows.map((r) => toSummary(r.binder, r.filled))
     },
 
+    /** `set` e `template` vêm juntos (binder de coleção) ou nenhum dos dois (binder em branco). */
     async create(
       userId: string,
-      input: { name: string; language: Language; set?: SetDetail; fill: boolean },
+      input: {
+        name: string
+        language: Language
+        set?: { summary: SetSummary; type: SetType; template: BinderTemplateCard[] }
+        fill: boolean
+      },
     ) {
-      const template: BinderTemplateCard[] | null = input.set?.cards ?? null
+      const template = input.set?.template ?? null
       const [b] = await db
         .insert(binders)
         .values({
@@ -125,9 +136,10 @@ export function createBindersService(db: Db) {
           userId,
           name: input.name,
           language: input.language,
-          setId: input.set?.id ?? null,
-          setName: input.set?.name ?? null,
-          setLogoUrl: input.set?.logoUrl ?? null,
+          setId: input.set?.summary.id ?? null,
+          setName: input.set?.summary.name ?? null,
+          setLogoUrl: input.set?.summary.logoUrl ?? null,
+          setType: input.set?.type ?? null,
           template,
         })
         .returning()
@@ -206,6 +218,13 @@ export function createBindersService(db: Db) {
             400,
             'WRONG_CARD_FOR_POCKET',
             `Esse bolso é da carta ${reserved.name} (#${reserved.localId}).`,
+          )
+        }
+        if (reserved.variant && reserved.variant !== item.variant) {
+          throw new AppError(
+            400,
+            'WRONG_VARIANT_FOR_POCKET',
+            `Esse bolso é da versão ${VARIANT_LABELS[reserved.variant]} de ${reserved.name}.`,
           )
         }
       }

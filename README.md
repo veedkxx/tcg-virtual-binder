@@ -45,7 +45,7 @@ drizzle/              migrations geradas pelo drizzle-kit
 | GET | `/api/sets?lang=` | coleções do TCGdex (mais novas primeiro) |
 | GET | `/api/sets/:id?lang=` | coleção com as cartas |
 | GET | `/api/binders?lang=` | binders do usuário |
-| POST | `/api/binders` | `{ name, setId?, fill? }`; com `setId`, reserva um bolso por carta da coleção |
+| POST | `/api/binders` | `{ name, setId?, setType?, fill? }`; com `setId`, monta Core Set (padrão) ou Master Set |
 | GET / PATCH / DELETE | `/api/binders/:id` | detalhe / renomear `{ name }` / apagar (a coleção não muda) |
 | POST | `/api/binders/:id/fill` | coloca as cartas que o usuário tem nos bolsos vazios do molde |
 | PUT / DELETE | `/api/binders/:id/slots/:position` | `{ collectionItemId }` coloca/troca / esvazia o bolso |

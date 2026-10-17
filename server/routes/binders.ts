@@ -9,6 +9,7 @@ import {
 } from '../../shared/schemas.js'
 import { currentUser } from '../middleware/session.js'
 import type { BindersService } from '../services/binders.js'
+import { buildSetTemplate } from '../services/setTemplate.js'
 import { resolveVariant, snapshotOf, type CollectionService } from '../services/collection.js'
 import type { CardsProvider } from '../services/tcgdex.js'
 
@@ -35,10 +36,15 @@ export function createBindersRouter(deps: {
 
   router.post('/', async (req, res) => {
     const { id: userId } = currentUser(res)
-    const { name, language, setId, fill } = CreateBinderSchema.parse(req.body)
+    const { name, language, setId, setType, fill } = CreateBinderSchema.parse(req.body)
 
     // O molde vem do TCGdex (servidor), nunca do cliente.
-    const set = setId ? await cards.getSet({ lang: language, id: setId }) : undefined
+    let set
+    if (setId) {
+      const detail = await cards.getSet({ lang: language, id: setId })
+      const template = await buildSetTemplate(cards, language, detail, setType)
+      set = { summary: detail, type: setType, template }
+    }
     res.status(201).json(await binders.create(userId, { name, language, set, fill }))
   })
 
@@ -84,7 +90,11 @@ export function createBindersRouter(deps: {
     const item = await collection.add(
       userId,
       snapshotOf(card, language),
-      { variant: resolveVariant(card, input.variant), condition: input.condition },
+      // Bolso de Master Set já define a variante.
+      {
+        variant: resolveVariant(card, reserved.variant ?? input.variant),
+        condition: input.condition,
+      },
       input.quantity,
     )
     await binders.putSlot(userId, req.params.id, position, item.id)

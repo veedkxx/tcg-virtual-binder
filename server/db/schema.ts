@@ -10,6 +10,7 @@ import {
 } from 'drizzle-orm/sqlite-core'
 import type { Condition, Variant } from '../../shared/copies.js'
 import type { BinderTemplateCard } from '../../shared/schemas.js'
+import type { SetType } from '../../shared/setTypes.js'
 
 /** Contas. O Google é o único provedor por enquanto; `google_id` é o "sub" estável do Google. */
 export const users = sqliteTable('users', {
@@ -105,6 +106,8 @@ export const binders = sqliteTable(
     setId: text('set_id'),
     setName: text('set_name'),
     setLogoUrl: text('set_logo_url'),
+    /** core/master; null em binder em branco e nos criados antes da Sprint 4. */
+    setType: text('set_type').$type<SetType>(),
     template: text('template', { mode: 'json' }).$type<BinderTemplateCard[]>(),
     createdAt: text('created_at')
       .notNull()

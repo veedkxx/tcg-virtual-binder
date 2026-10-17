@@ -2,6 +2,12 @@ import { useMemo, useState } from 'react'
 import { BookOpen, Check, LayoutGrid, Search } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import type { SetSummary } from '../../shared/schemas'
+import {
+  SET_TYPE_DESCRIPTIONS,
+  SET_TYPE_LABELS,
+  SET_TYPES,
+  type SetType,
+} from '../../shared/setTypes'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -34,6 +40,7 @@ export function CreateBinderDialog({ open, onOpenChange }: Props) {
   const [nameTouched, setNameTouched] = useState(false)
   const [set, setSet] = useState<SetSummary | null>(null)
   const [fill, setFill] = useState(true)
+  const [setType, setSetType] = useState<SetType>('core')
 
   const reset = () => {
     setMode('blank')
@@ -41,6 +48,7 @@ export function CreateBinderDialog({ open, onOpenChange }: Props) {
     setNameTouched(false)
     setSet(null)
     setFill(true)
+    setSetType('core')
   }
 
   const chooseSet = (s: SetSummary) => {
@@ -55,7 +63,11 @@ export function CreateBinderDialog({ open, onOpenChange }: Props) {
     e.preventDefault()
     if (!canSubmit) return
     create.mutate(
-      { name: name.trim(), setId: mode === 'set' ? set!.id : undefined, fill },
+      {
+        name: name.trim(),
+        ...(mode === 'set' ? { setId: set!.id, setType } : {}),
+        fill,
+      },
       {
         onSuccess: (binder) => {
           onOpenChange(false)
@@ -102,6 +114,38 @@ export function CreateBinderDialog({ open, onOpenChange }: Props) {
 
           {mode === 'set' && <SetPicker selected={set} onSelect={chooseSet} />}
 
+          {mode === 'set' && (
+            <div className="grid gap-2" role="radiogroup" aria-label="Tipo de binder da coleção">
+              {SET_TYPES.map((t) => (
+                <label
+                  key={t}
+                  className={cn(
+                    'flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors hover:bg-accent',
+                    setType === t && 'border-primary ring-1 ring-primary',
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="set-type"
+                    value={t}
+                    checked={setType === t}
+                    onChange={() => setSetType(t)}
+                    className="mt-0.5 size-4 shrink-0 accent-primary"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium">
+                      {SET_TYPE_LABELS[t]}
+                      {set && <SetTypeCount set={set} type={t} />}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {SET_TYPE_DESCRIPTIONS[t]}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+
           <label className="grid gap-1.5 text-sm font-medium">
             Nome
             <Input
@@ -137,7 +181,7 @@ export function CreateBinderDialog({ open, onOpenChange }: Props) {
               Cancelar
             </Button>
             <Button type="submit" disabled={!canSubmit || create.isPending}>
-              Criar binder
+              {create.isPending ? 'Montando o binder…' : 'Criar binder'}
             </Button>
           </DialogFooter>
         </form>
@@ -258,5 +302,17 @@ function SetPicker(props: { selected: SetSummary | null; onSelect: (s: SetSummar
         )}
       </div>
     </div>
+  )
+}
+
+/** Quantos bolsos o tipo vai ter, quando dá para saber antes de criar. */
+function SetTypeCount({ set, type }: { set: SetSummary; type: SetType }) {
+  const count = type === 'core' ? (set.officialCount ?? set.cardCount) : set.cardCount
+  if (!count) return null
+  return (
+    <span className="font-normal text-muted-foreground">
+      {' '}
+      · {type === 'master' ? `${count} cartas, em cada versão` : `${count} cartas`}
+    </span>
   )
 }

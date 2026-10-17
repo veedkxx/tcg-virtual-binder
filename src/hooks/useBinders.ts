@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import type { SetType } from '../../shared/setTypes'
 import type { AddToPocketInput, BinderDetail, CollectionItem } from '../../shared/schemas'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
@@ -55,7 +56,7 @@ export function useCreateBinder() {
   const language = useUiStore((s) => s.language)
   const invalidate = useInvalidateBinders()
   return useMutation({
-    mutationFn: (input: { name: string; setId?: string; fill: boolean }) =>
+    mutationFn: (input: { name: string; setId?: string; setType?: SetType; fill: boolean }) =>
       api.createBinder({ ...input, language }),
     onSuccess: (binder) => {
       toast.success(

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import type { Variant } from '../shared/copies.js'
 import type { Language } from '../shared/languages.js'
 import type { BinderDetail, BinderSummary, CardDetail, SetDetail } from '../shared/schemas.js'
 import { createApp } from './app.js'
@@ -18,7 +19,15 @@ import type { CardsProvider } from './services/tcgdex.js'
 
 // Requer as migrations geradas: `npm run db:generate` (pasta ./drizzle).
 
-// Ids terminados em "-holo" só existem em holo; o resto em normal e reverse.
+// Ids terminados em "-holo" só existem em holo; o resto em normal e reverse. No set falso,
+// sv09-011 (secreta) é só holo e sv09-005 tem uma holo carimbada, que não sai em booster.
+const variantsOf = (id: string): { all: Variant[]; booster: Variant[] } =>
+  id.endsWith('-holo') || id === 'sv09-011'
+    ? { all: ['holo'], booster: ['holo'] }
+    : id === 'sv09-005'
+      ? { all: ['normal', 'reverse', 'holo'], booster: ['normal', 'reverse'] }
+      : { all: ['normal', 'reverse'], booster: ['normal', 'reverse'] }
+
 const fakeCard = (id: string, language: Language = 'pt'): CardDetail => ({
   id,
   localId: '25',
@@ -32,7 +41,8 @@ const fakeCard = (id: string, language: Language = 'pt'): CardDetail => ({
   hp: 60,
   types: ['Elétrico'],
   description: null,
-  variants: id.endsWith('-holo') ? ['holo'] : ['normal', 'reverse'],
+  variants: variantsOf(id).all,
+  boosterVariants: variantsOf(id).booster,
   set: { id: 'base1', name: 'Base Set', logoUrl: null, cardCount: 102 },
 })
 
@@ -43,6 +53,7 @@ const fakeSet: SetDetail = {
   logoUrl: 'https://assets.example/sv09/logo.webp',
   symbolUrl: null,
   cardCount: 12,
+  officialCount: 10,
   cards: Array.from({ length: 12 }, (_, i) => {
     const localId = String(i + 1).padStart(3, '0')
     return { id: `sv09-${localId}`, localId, name: `Carta ${localId}`, imageUrl: null }
@@ -72,6 +83,7 @@ const cards: CardsProvider = {
         logoUrl: fakeSet.logoUrl,
         symbolUrl: null,
         cardCount: 12,
+        officialCount: 10,
       },
     ]
   },
@@ -746,16 +758,65 @@ describe('/api/binders', () => {
     expect(collection.items).toHaveLength(1)
   })
 
-  it('binder a partir de uma coleção reserva um bolso por carta', async () => {
+  it('Core Set (padrão): uma de cada carta numerada, sem as secretas', async () => {
     const { create, detail } = await setup()
     const binder = await create({ name: 'Amigos de Jornada', setId: 'sv09' })
     expect(binder).toMatchObject({
       set: { id: 'sv09', name: 'Amigos de Jornada' },
+      setType: 'core',
       filled: 0,
-      templateSize: 12,
+      templateSize: 10,
     })
     const d = await detail(binder.id)
-    expect(d.template?.map((c) => c.id)).toEqual(fakeSet.cards.map((c) => c.id))
+    expect(d.template?.map((c) => c.id)).toEqual(fakeSet.cards.slice(0, 10).map((c) => c.id))
+    expect(d.template?.every((c) => c.variant === undefined)).toBe(true)
+  })
+
+  it('Master Set: todas as cartas, um bolso por versão de booster', async () => {
+    const { create, detail } = await setup()
+    const binder = await create({ name: 'AJ master', setId: 'sv09', setType: 'master' })
+    // 11 cartas normal+reverse (a holo carimbada da 005 fica de fora) + a 011, só holo.
+    expect(binder).toMatchObject({ setType: 'master', templateSize: 23 })
+    const d = await detail(binder.id)
+    expect(d.template?.slice(0, 2)).toMatchObject([
+      { id: 'sv09-001', variant: 'normal' },
+      { id: 'sv09-001', variant: 'reverse' },
+    ])
+    expect(d.template?.filter((c) => c.id === 'sv09-005').map((c) => c.variant)).toEqual([
+      'normal',
+      'reverse',
+    ])
+    expect(d.template?.filter((c) => c.id === 'sv09-011').map((c) => c.variant)).toEqual(['holo'])
+  })
+
+  it('Master Set: cada bolso só aceita a sua versão; preencher e o atalho respeitam isso', async () => {
+    const { client, add, create, detail, put } = await setup()
+    await add('sv09-001') // normal
+    const reverse = await json<ItemBody>(
+      await client.post('/api/collection', { cardId: 'sv09-001', variant: 'reverse' }),
+    )
+    const binder = await create({ name: 'AJ', setId: 'sv09', setType: 'master', fill: true })
+    expect(binder.filled).toBe(2)
+    expect((await detail(binder.id)).slots.map((s) => [s.position, s.item.variant])).toEqual([
+      [0, 'normal'],
+      [1, 'reverse'],
+    ])
+
+    const wrong = await put(binder.id, 0, reverse.id)
+    expect(wrong.status).toBe(400)
+    expect(await json(wrong)).toMatchObject({ error: { code: 'WRONG_VARIANT_FOR_POCKET' } })
+
+    // Atalho no bolso 3 (sv09-002 reverse): a variante vem do bolso, não do pedido.
+    const added = await client.post(`/api/binders/${binder.id}/slots/3/add`, {
+      variant: 'normal',
+    })
+    expect(await json(added)).toMatchObject({ cardId: 'sv09-002', variant: 'reverse' })
+  })
+
+  it('rejeita tipo de binder desconhecido', async () => {
+    const { client } = await setup()
+    const res = await client.post('/api/binders', { name: 'X', setId: 'sv09', setType: 'grand' })
+    expect(res.status).toBe(400)
   })
 
   it('coleção inexistente não cria binder', async () => {

@@ -61,7 +61,7 @@ export function Pocket({ state, onClick, onQuickAdd, busy }: Props) {
           aria-label={
             owned
               ? `${card.name} #${card.localId}: você tem, toque para colocar`
-              : `${card.name} #${card.localId}: falta`
+              : `${card.name} #${card.localId}${card.variant ? ` (${VARIANT_LABELS[card.variant]})` : ''}: falta`
           }
           className="block w-full rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
@@ -79,6 +79,7 @@ export function Pocket({ state, onClick, onQuickAdd, busy }: Props) {
         <div className="pointer-events-none absolute inset-x-1 bottom-1 flex items-center gap-1">
           <span className="flex-1 truncate rounded bg-background/85 px-1 py-0.5 text-center text-[10px] font-medium tabular-nums sm:text-xs">
             #{card.localId}
+            {card.variant && card.variant !== 'normal' && ` · ${VARIANT_SHORT[card.variant]}`}
           </span>
           {!owned && onQuickAdd && (
             <button

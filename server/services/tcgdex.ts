@@ -41,6 +41,16 @@ const RawCardSchema = RawBriefSchema.extend({
   types: z.array(z.string()).optional(),
   description: z.string().optional(),
   variants: z.record(z.string(), z.boolean().nullish()).nullish(),
+  // Cada impressão; as com carimbo (stamp) ou acabamento especial (foil) não saem nos boosters.
+  variants_detailed: z
+    .array(
+      z.object({
+        type: z.string(),
+        stamp: z.array(z.string()).nullish(),
+        foil: z.string().nullish(),
+      }),
+    )
+    .nullish(),
   set: z.object({
     id: z.string(),
     name: z.string(),
@@ -54,7 +64,7 @@ const RawSetBriefSchema = z.object({
   name: z.string(),
   logo: z.string().optional(),
   symbol: z.string().optional(),
-  cardCount: z.object({ total: z.number().optional() }).optional(),
+  cardCount: z.object({ total: z.number().optional(), official: z.number().optional() }).optional(),
 })
 
 const RawSetSchema = RawSetBriefSchema.extend({
@@ -136,6 +146,23 @@ function toVariants(raw: Record<string, boolean | null | undefined> | null | und
   return found.length > 0 ? found : ['normal']
 }
 
+/**
+ * Versões de booster: as impressões sem carimbo nem acabamento especial. O TCGdex marca, por
+ * exemplo, a holo carimbada de promo de uma carta comum como `holo`; ela fica de fora.
+ * Os nomes vêm traduzidos em alguns idiomas ("Normal", "Reverse"), por isso o toLowerCase.
+ */
+function toBoosterVariants(
+  detailed: { type: string; stamp?: string[] | null; foil?: string | null }[] | null | undefined,
+  all: Variant[],
+): Variant[] {
+  if (!detailed || detailed.length === 0) return all
+  const plain = new Set(
+    detailed.filter((d) => !d.stamp?.length && !d.foil).map((d) => d.type.toLowerCase()),
+  )
+  const found = all.filter((v) => plain.has(v.toLowerCase()))
+  return found.length > 0 ? found : all
+}
+
 const assetUrl = (base: string | undefined) => (base ? `${base}.webp` : null)
 
 const SET_NOT_FOUND = { code: 'SET_NOT_FOUND', message: 'Coleção não encontrada.' }
@@ -147,6 +174,7 @@ function toSetSummary(s: z.infer<typeof RawSetBriefSchema>): SetSummary {
     logoUrl: assetUrl(s.logo),
     symbolUrl: assetUrl(s.symbol),
     cardCount: s.cardCount?.total ?? null,
+    officialCount: s.cardCount?.official ?? null,
   }
 }
 
@@ -186,6 +214,7 @@ export const tcgdex: CardsProvider = {
       types: c.types ?? [],
       description: c.description ?? null,
       variants: toVariants(c.variants),
+      boosterVariants: toBoosterVariants(c.variants_detailed, toVariants(c.variants)),
       set: {
         id: c.set.id,
         name: c.set.name,

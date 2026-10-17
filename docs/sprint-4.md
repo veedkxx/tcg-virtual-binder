@@ -20,6 +20,13 @@ idioma escolhido.
 
 ## Binders
 
+- Binder de coleção pode ser **Core Set** (uma de cada carta numerada até o total oficial, sem as
+  secretas) ou **Master Set** (todas as cartas, um bolso por versão de booster: normal, reverse, holo).
+  Impressões com carimbo ou acabamento especial ficam de fora (Grand Master Set: Sprint 5).
+- No Master Set cada bolso só aceita a sua versão (`WRONG_VARIANT_FOR_POCKET`). Montar um Master Set
+  busca o detalhe de cada carta no TCGdex (~5 s na primeira vez; depois fica em cache).
+- No zoom do bolso dá pra mudar a quantidade da cópia e, na carta que falta, escolher quantas adicionar.
+
 - Ao preencher um binder de coleção, entra a cópia mais comum na melhor condição (normal NM primeiro).
 - O bolso mostra a variante quando não é normal (ex.: `×1 · RH`).
 - Num binder de coleção dá pra trocar a cópia do bolso por outra cópia da mesma carta.
@@ -28,5 +35,5 @@ idioma escolhido.
 
 ## Deploy
 
-Migration `0003` (colunas `variant` e `condition` + chave única nova). Aplicar no Turso antes do deploy.
-Itens antigos viram `normal` / `NM`.
+Migrations `0003` (colunas `variant` e `condition` + chave única nova) e `0004` (coluna `set_type`).
+Aplicar no Turso antes do deploy. Itens antigos viram `normal` / `NM`; binders antigos ficam sem tipo.
