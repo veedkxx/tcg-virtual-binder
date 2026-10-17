@@ -1,6 +1,10 @@
-import { ArrowLeft, Check, LogIn, Plus } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowLeft, LogIn, Plus } from 'lucide-react'
 import { Link, useLocation, useParams } from 'react-router-dom'
+import { compareCopies, DEFAULT_CONDITION, type Condition, type Variant } from '../../shared/copies'
+import type { CardDetail, CollectionItem } from '../../shared/schemas'
 import { CardImage } from '@/components/CardImage'
+import { ConditionSelect, VariantPicker, VariantSelect } from '@/components/CopyControls'
 import { QuantityStepper } from '@/components/QuantityStepper'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,8 +15,8 @@ import { useCard } from '@/hooks/useCards'
 import {
   useAddToCollection,
   useCollection,
-  useRemoveFromCollection,
-  useSetQuantity,
+  useRemoveCollectionItem,
+  useUpdateCollectionItem,
 } from '@/hooks/useCollection'
 import { useUiStore } from '@/store/ui'
 
@@ -22,15 +26,10 @@ export function CardPage() {
   const { user, isLoading: authLoading } = useAuth()
   const card = useCard(id)
   const collection = useCollection()
+  const language = useUiStore((s) => s.language)
 
-  const pendingQuantity = useUiStore((s) => s.pendingQuantity)
-  const setPendingQuantity = useUiStore((s) => s.setPendingQuantity)
-
-  const add = useAddToCollection()
-  const setQuantity = useSetQuantity()
-  const remove = useRemoveFromCollection()
-
-  const owned = collection.data?.items.find((i) => i.cardId === id)
+  const copies = (collection.data?.items ?? []).filter((i) => i.cardId === id).sort(compareCopies)
+  const total = copies.reduce((sum, i) => sum + i.quantity, 0)
 
   const back = (
     <Button asChild variant="ghost" size="sm" className="-ml-2">
@@ -99,9 +98,16 @@ export function CardPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Coleção</CardTitle>
+              <CardTitle className="flex items-baseline justify-between gap-2">
+                Coleção
+                {total > 0 && (
+                  <span className="text-sm font-normal text-muted-foreground">
+                    Você tem {total} {total === 1 ? 'cópia' : 'cópias'}
+                  </span>
+                )}
+              </CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-wrap items-center gap-4">
+            <CardContent className="space-y-5">
               {authLoading ? (
                 <Skeleton className="h-9 w-48" />
               ) : !user ? (
@@ -110,39 +116,104 @@ export function CardPage() {
                     <LogIn /> Entrar para adicionar à coleção
                   </a>
                 </Button>
-              ) : owned ? (
-                <>
-                  <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-                    <Check className="size-4" /> Na sua coleção
-                  </span>
-                  <QuantityStepper
-                    value={owned.quantity}
-                    onChange={(quantity) => setQuantity.mutate({ cardId: c.id, quantity })}
-                    confirmRemove={{
-                      cardName: c.name,
-                      onConfirm: () => remove.mutate({ cardId: c.id, name: c.name }),
-                    }}
-                  />
-                </>
               ) : (
                 <>
-                  <QuantityStepper value={pendingQuantity} onChange={setPendingQuantity} />
-                  <Button
-                    disabled={add.isPending || collection.isPending}
-                    onClick={() =>
-                      add.mutate(
-                        { cardId: c.id, quantity: pendingQuantity },
-                        { onSuccess: () => setPendingQuantity(1) },
-                      )
-                    }
-                  >
-                    <Plus /> Adicionar à coleção
-                  </Button>
+                  {copies.length > 0 && (
+                    <ul className="divide-y rounded-lg border">
+                      {copies.map((item) => (
+                        <CopyRow key={item.id} item={item} variants={c.variants} />
+                      ))}
+                    </ul>
+                  )}
+                  {/* A key zera o formulário ao trocar de carta ou de idioma. */}
+                  <AddCopyForm
+                    key={`${c.id}-${language}`}
+                    card={c}
+                    title={copies.length > 0 ? 'Adicionar outra cópia' : undefined}
+                    disabled={collection.isPending}
+                  />
                 </>
               )}
             </CardContent>
           </Card>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/** Uma cópia que o usuário tem: dá para corrigir variante/condição e mudar a quantidade. */
+function CopyRow({ item, variants }: { item: CollectionItem; variants: Variant[] }) {
+  const update = useUpdateCollectionItem()
+  const remove = useRemoveCollectionItem()
+
+  return (
+    <li className="flex flex-wrap items-center gap-2 p-3">
+      <VariantSelect
+        options={variants}
+        value={item.variant}
+        disabled={update.isPending}
+        onChange={(variant) => update.mutate({ id: item.id, patch: { variant } })}
+      />
+      <ConditionSelect
+        value={item.condition}
+        disabled={update.isPending}
+        onChange={(condition) => update.mutate({ id: item.id, patch: { condition } })}
+      />
+      {item.binderCount > 0 && (
+        <span className="text-xs text-muted-foreground">
+          em {item.binderCount} {item.binderCount === 1 ? 'binder' : 'binders'}
+        </span>
+      )}
+      <div className="ml-auto">
+        <QuantityStepper
+          value={item.quantity}
+          onChange={(quantity) => update.mutate({ id: item.id, patch: { quantity } })}
+          confirmRemove={{
+            cardName: item.name,
+            onConfirm: () => remove.mutate({ id: item.id, name: item.name }),
+          }}
+        />
+      </div>
+    </li>
+  )
+}
+
+function AddCopyForm({
+  card,
+  title,
+  disabled,
+}: {
+  card: CardDetail
+  title?: string
+  disabled?: boolean
+}) {
+  const add = useAddToCollection()
+  const pendingQuantity = useUiStore((s) => s.pendingQuantity)
+  const setPendingQuantity = useUiStore((s) => s.setPendingQuantity)
+  const [variant, setVariant] = useState<Variant>(card.variants[0]!)
+  const [condition, setCondition] = useState<Condition>(DEFAULT_CONDITION)
+
+  return (
+    <div className="space-y-3">
+      {title && <p className="text-sm font-medium">{title}</p>}
+      {card.variants.length > 1 && (
+        <VariantPicker options={card.variants} value={variant} onChange={setVariant} />
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        <ConditionSelect value={condition} onChange={setCondition} />
+        <QuantityStepper value={pendingQuantity} onChange={setPendingQuantity} />
+        <Button
+          disabled={add.isPending || disabled}
+          onClick={() =>
+            add.mutate(
+              { cardId: card.id, quantity: pendingQuantity, variant, condition },
+              { onSuccess: () => setPendingQuantity(1) },
+            )
+          }
+        >
+          <Plus /> Adicionar à coleção
+        </Button>
       </div>
     </div>
   )

@@ -1,4 +1,5 @@
 import { Plus } from 'lucide-react'
+import { VARIANT_LABELS, VARIANT_SHORT } from '../../../shared/copies'
 import type { BinderTemplateCard, CollectionItem } from '../../../shared/schemas'
 import { CardImage } from '@/components/CardImage'
 import { Badge } from '@/components/ui/badge'
@@ -6,8 +7,15 @@ import { cn } from '@/lib/utils'
 
 export type PocketState =
   | { kind: 'filled'; item: CollectionItem }
-  /** Bolso reservado (binder de coleção) ainda vazio; `owned` = carta que o usuário já tem. */
-  | { kind: 'reserved'; card: BinderTemplateCard; owned: CollectionItem | undefined }
+  /**
+   * Bolso reservado (binder de coleção) ainda vazio. `owned`: o usuário tem a carta; `best` é
+   * a cópia que entra com um toque e `total` soma todas as cópias.
+   */
+  | {
+      kind: 'reserved'
+      card: BinderTemplateCard
+      owned: { best: CollectionItem; total: number } | undefined
+    }
   | { kind: 'free' }
   /** Depois da última carta de um binder de coleção. */
   | { kind: 'none' }
@@ -66,7 +74,7 @@ export function Pocket({ state, onClick }: Props) {
         </span>
         {owned && (
           <Badge className="absolute right-1 top-1 px-1.5 text-[10px] shadow sm:text-xs">
-            <Plus className="size-3" /> ×{owned.quantity}
+            <Plus className="size-3" /> ×{owned.total}
           </Badge>
         )}
       </button>
@@ -78,12 +86,15 @@ export function Pocket({ state, onClick }: Props) {
     <button
       type="button"
       onClick={onClick}
-      aria-label={`${item.name}, você tem ${item.quantity}`}
+      aria-label={`${item.name} (${VARIANT_LABELS[item.variant]}, ${item.condition}), você tem ${item.quantity}`}
       className="group relative rounded-lg outline-none transition-transform hover:-translate-y-0.5 hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-ring"
     >
       <CardImage src={item.imageUrl} alt={item.name} className="shadow-md group-hover:shadow-xl" />
       <Badge className="absolute right-1 top-1 px-1.5 text-[10px] tabular-nums shadow sm:text-xs">
         ×{item.quantity}
+        {item.variant !== 'normal' && (
+          <span className="opacity-80">· {VARIANT_SHORT[item.variant]}</span>
+        )}
       </Badge>
     </button>
   )

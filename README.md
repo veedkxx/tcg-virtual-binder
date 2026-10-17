@@ -1,7 +1,8 @@
 # TCG Binder
 
 Catálogo de cartas Pokémon TCG: **Pesquisa → Carta → Adicionar à coleção → Quantidade** (Sprint 1),
-login com Google (Sprint 2) e **binders** em páginas 3x3, livres ou montados a partir de uma coleção (Sprint 3).
+login com Google (Sprint 2) e **binders** em páginas 3x3, livres ou montados a partir de uma coleção (Sprint 3),
+cópias com variante, condição e idioma (Sprint 4).
 
 Stack: React + TypeScript + Vite, Tailwind v4, shadcn/ui, TanStack Query + Zustand, Express 5,
 SQLite via Turso (libSQL) + Drizzle ORM, dados de cartas do [TCGdex](https://tcgdex.dev). Deploy na Vercel.
@@ -37,10 +38,10 @@ drizzle/              migrations geradas pelo drizzle-kit
 | --- | --- | --- |
 | GET | `/api/cards?q=&page=&lang=` | busca por nome (proxy do TCGdex, 20 por página) |
 | GET | `/api/cards/:id?lang=` | detalhe da carta |
-| GET | `/api/collection?lang=` | coleção + totais |
-| POST | `/api/collection` | `{ cardId, quantity?, language? }`; se já existe, **soma** a quantidade |
-| PATCH | `/api/collection/:cardId?lang=` | `{ quantity }` define a quantidade exata (1 a 9999) |
-| DELETE | `/api/collection/:cardId?lang=` | remove da coleção |
+| GET | `/api/collection?lang=` | cópias da coleção + totais |
+| POST | `/api/collection` | `{ cardId, language?, variant?, condition?, quantity? }`; se a cópia já existe, **soma** a quantidade |
+| PATCH | `/api/collection/:id` | `{ quantity?, variant?, condition? }`; se virar uma cópia que já existe, as duas se juntam |
+| DELETE | `/api/collection/:id` | remove a cópia |
 | GET | `/api/sets?lang=` | coleções do TCGdex (mais novas primeiro) |
 | GET | `/api/sets/:id?lang=` | coleção com as cartas |
 | GET | `/api/binders?lang=` | binders do usuário |
@@ -56,13 +57,11 @@ Erros seguem `{ "error": { "code", "message" } }`.
 
 ## Idiomas
 
-Sprint 1 é só **português** (`pt`). A chave única da coleção é `(card_id, language)`, então a mesma carta
-em idiomas diferentes já é tratada como itens separados. Para habilitar outro idioma:
+**Português** e **inglês**, escolhidos no cabeçalho; o idioma vale para busca, coleção e binders e
+fica salvo no navegador. Cada cópia da coleção é `(carta, idioma, variante, condição)`.
 
-1. adicione o código em `ENABLED_LANGUAGES` e o rótulo em `LANGUAGE_LABELS` (`shared/languages.ts`);
-2. crie o seletor de idioma chamando `setLanguage` da store (`src/store/ui.ts`).
-
-Nenhuma migration é necessária. Todos os hooks já incluem o idioma nas query keys.
+Para habilitar outro idioma do TCGdex (es, fr, de, it, ja…), adicione o código em `ENABLED_LANGUAGES` e
+o rótulo em `LANGUAGE_LABELS` (`shared/languages.ts`). Nenhuma migration é necessária.
 
 ## Deploy (Vercel + Turso)
 
@@ -84,5 +83,4 @@ Se `TURSO_DATABASE_URL` for `file:...` dentro da Vercel, o servidor falha de pro
 
 ## Ainda fora do escopo
 
-Scanner (barcode/QR e imagem), variantes (normal/holo/reverse), condição da carta, arrastar cartas
-entre bolsos.
+Scanner (barcode/QR e imagem), arrastar cartas entre bolsos. Roadmap em `docs/`.

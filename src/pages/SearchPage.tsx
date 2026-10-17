@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { useCardSearch } from '@/hooks/useCards'
 import { useCollection } from '@/hooks/useCollection'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { LANGUAGE_LABELS } from '../../shared/languages'
 import { useUiStore } from '@/store/ui'
 
 export function SearchPage() {
@@ -13,6 +14,7 @@ export function SearchPage() {
   const setSearchQuery = useUiStore((s) => s.setSearchQuery)
   const page = useUiStore((s) => s.searchPage)
   const setPage = useUiStore((s) => s.setSearchPage)
+  const languageLabel = LANGUAGE_LABELS[useUiStore((s) => s.language)].toLowerCase()
 
   const debounced = useDebouncedValue(searchQuery.trim(), 400)
   const active = debounced.length >= 2
@@ -20,10 +22,14 @@ export function SearchPage() {
   const search = useCardSearch(debounced, page)
   const collection = useCollection()
 
-  const ownedById = useMemo(
-    () => new Map(collection.data?.items.map((i) => [i.cardId, i.quantity] as const)),
-    [collection.data],
-  )
+  // Soma todas as cópias (variantes e condições) da carta.
+  const ownedById = useMemo(() => {
+    const owned = new Map<string, number>()
+    for (const i of collection.data?.items ?? []) {
+      owned.set(i.cardId, (owned.get(i.cardId) ?? 0) + i.quantity)
+    }
+    return owned
+  }, [collection.data])
 
   return (
     <div className="space-y-6">
@@ -41,7 +47,7 @@ export function SearchPage() {
 
       {!active ? (
         <p className="py-16 text-center text-sm text-muted-foreground">
-          Digite pelo menos 2 letras para buscar cartas em português.
+          Digite pelo menos 2 letras para buscar cartas em {languageLabel}.
         </p>
       ) : search.isPending ? (
         <Grid>
@@ -58,7 +64,7 @@ export function SearchPage() {
         </div>
       ) : search.data.items.length === 0 ? (
         <p className="py-16 text-center text-sm text-muted-foreground">
-          Nenhuma carta encontrada para “{debounced}”. Nem todo set está traduzido para português.
+          Nenhuma carta encontrada para “{debounced}”. Nem toda coleção existe em {languageLabel}.
         </p>
       ) : (
         <>

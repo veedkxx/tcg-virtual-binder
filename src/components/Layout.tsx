@@ -1,6 +1,7 @@
 import { BookOpen, Library, LogIn, LogOut, Search } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import type { User } from '../../shared/schemas'
+import { LanguageSelect } from '@/components/LanguageSelect'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -50,7 +51,7 @@ function AccountArea() {
 
   return (
     <div className="flex items-center gap-1">
-      <span title={user.email}>
+      <span title={user.email} className="hidden sm:inline">
         <UserAvatar user={user} />
       </span>
       <span className="hidden max-w-32 truncate text-sm sm:inline">{user.name ?? user.email}</span>
@@ -93,6 +94,7 @@ export function Layout() {
               <BookOpen className="size-4" />
               <span className="hidden sm:inline">Binders</span>
             </NavLink>
+            <LanguageSelect />
             <ThemeToggle />
             <AccountArea />
           </nav>

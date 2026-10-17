@@ -1,6 +1,7 @@
 import { ArrowLeftRight, ExternalLink, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { BinderTemplateCard, CollectionItem } from '../../../shared/schemas'
+import { CopyBadges } from '@/components/CopyControls'
 import { TiltCard, highResUrl } from '@/components/TiltCard'
 import { Button } from '@/components/ui/button'
 import {
@@ -104,8 +105,9 @@ function FilledInfo({ item, where }: { item: CollectionItem; where: string }) {
         <DialogTitle className="text-2xl">{item.name}</DialogTitle>
         <DialogDescription>{meta}</DialogDescription>
       </DialogHeader>
+      <CopyBadges variant={item.variant} condition={item.condition} full />
       <dl className="grid grid-cols-2 gap-3">
-        <Stat label="Você tem" value={`×${item.quantity}`} />
+        <Stat label="Você tem desta cópia" value={`×${item.quantity}`} />
         <Stat
           label="Aparece em"
           value={`${item.binderCount} ${item.binderCount === 1 ? 'binder' : 'binders'}`}

@@ -1,18 +1,22 @@
 import { Link } from 'react-router-dom'
+import { LANGUAGE_LABELS } from '../../shared/languages'
+import { CopyBadges } from '@/components/CopyControls'
 import { QuantityStepper } from '@/components/QuantityStepper'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CardImage } from '@/components/CardImage'
 import {
   useCollection,
-  useRemoveFromCollection,
-  useSetQuantity,
+  useRemoveCollectionItem,
+  useUpdateCollectionItem,
 } from '@/hooks/useCollection'
+import { useUiStore } from '@/store/ui'
 
 export function CollectionPage() {
   const collection = useCollection()
-  const setQuantity = useSetQuantity()
-  const remove = useRemoveFromCollection()
+  const update = useUpdateCollectionItem()
+  const remove = useRemoveCollectionItem()
+  const languageLabel = LANGUAGE_LABELS[useUiStore((s) => s.language)].toLowerCase()
 
   if (collection.isPending) {
     return (
@@ -40,7 +44,9 @@ export function CollectionPage() {
   if (items.length === 0) {
     return (
       <div className="space-y-4 py-16 text-center">
-        <p className="text-sm text-muted-foreground">Sua coleção ainda está vazia.</p>
+        <p className="text-sm text-muted-foreground">
+          Você ainda não tem cartas em {languageLabel}.
+        </p>
         <Button asChild>
           <Link to="/">Buscar cartas</Link>
         </Button>
@@ -76,6 +82,7 @@ export function CollectionPage() {
                   .filter(Boolean)
                   .join(' · ')}
               </p>
+              <CopyBadges variant={item.variant} condition={item.condition} className="mt-1" />
               {item.binderCount > 0 && (
                 <p className="text-xs text-muted-foreground">
                   Em {item.binderCount} {item.binderCount === 1 ? 'binder' : 'binders'}
@@ -84,10 +91,10 @@ export function CollectionPage() {
             </div>
             <QuantityStepper
               value={item.quantity}
-              onChange={(quantity) => setQuantity.mutate({ cardId: item.cardId, quantity })}
+              onChange={(quantity) => update.mutate({ id: item.id, patch: { quantity } })}
               confirmRemove={{
                 cardName: item.name,
-                onConfirm: () => remove.mutate({ cardId: item.cardId, name: item.name }),
+                onConfirm: () => remove.mutate({ id: item.id, name: item.name }),
               }}
             />
           </li>
