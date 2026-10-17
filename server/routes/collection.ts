@@ -1,30 +1,18 @@
 import { Router } from 'express'
-import type { Variant } from '../../shared/copies.js'
 import type { Language } from '../../shared/languages.js'
 import {
   AddToCollectionSchema,
   CollectionItemIdSchema,
   LangQuerySchema,
   UpdateCollectionItemSchema,
-  type CardDetail,
 } from '../../shared/schemas.js'
 import { AppError } from '../errors.js'
 import { currentUser } from '../middleware/session.js'
-import type { CollectionService } from '../services/collection.js'
+import { resolveVariant, snapshotOf, type CollectionService } from '../services/collection.js'
 import type { CardsProvider } from '../services/tcgdex.js'
 
 const notInCollection = () =>
   new AppError(404, 'NOT_IN_COLLECTION', 'Essa carta não está na coleção.')
-
-function assertVariant(card: CardDetail, variant: Variant) {
-  if (!card.variants.includes(variant)) {
-    throw new AppError(
-      400,
-      'VARIANT_NOT_AVAILABLE',
-      `${card.name} não foi impressa nessa variante.`,
-    )
-  }
-}
 
 // Este router é montado atrás de `requireAuth`; todos os handlers usam o usuário da sessão.
 export function createCollectionRouter(deps: {
@@ -52,22 +40,10 @@ export function createCollectionRouter(deps: {
 
     // O snapshot e as variantes vêm do TCGdex (servidor), nunca do cliente.
     const card = await cards.get({ lang: input.language, id: input.cardId })
-    const variant = input.variant ?? card.variants[0]!
-    assertVariant(card, variant)
-
     const item = await collection.add(
       userId,
-      {
-        cardId: card.id,
-        language: input.language,
-        name: card.name,
-        imageUrl: card.imageUrl,
-        setId: card.set.id,
-        setName: card.set.name,
-        localId: card.localId,
-        rarity: card.rarity,
-      },
-      { variant, condition: input.condition },
+      snapshotOf(card, input.language),
+      { variant: resolveVariant(card, input.variant), condition: input.condition },
       input.quantity,
     )
     res.status(201).json(item)
@@ -83,7 +59,7 @@ export function createCollectionRouter(deps: {
       if (!current) throw notInCollection()
       if (patch.variant !== current.variant) {
         const card = await cards.get({ lang: current.language as Language, id: current.cardId })
-        assertVariant(card, patch.variant)
+        resolveVariant(card, patch.variant)
       }
     }
 

@@ -99,7 +99,7 @@ export function BinderPage() {
 
 function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactNode }) {
   const collection = useCollection()
-  const { put, clear } = useSlotMutations(binder.id)
+  const { put, clear, addNew } = useSlotMutations(binder.id)
   const fill = useFillBinder(binder.id)
 
   const wide = useMediaQuery(WIDE_QUERY)
@@ -293,6 +293,8 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
                         key={position}
                         state={pocketState(position)}
                         onClick={() => onPocketClick(position)}
+                        onQuickAdd={() => addNew.mutate({ position })}
+                        busy={addNew.isPending && addNew.variables?.position === position}
                       />
                     )
                   })}
@@ -348,7 +350,7 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
 
       <p className="text-center text-xs text-muted-foreground">
         {binder.template
-          ? 'Cartas com borda: você tem, toque para colocar. Apagadas: ainda faltam.'
+          ? 'Cartas com borda: você tem, toque para colocar. Apagadas: ainda faltam; o + adiciona à coleção e ao binder.'
           : 'Toque num bolso vazio para escolher uma carta da sua coleção.'}{' '}
         <span className="hidden md:inline">Use ← → para folhear.</span>
       </p>
@@ -377,6 +379,10 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
             : undefined
         }
         onRemove={(position) => clear.mutate({ position })}
+        onAddMissing={(position, input) =>
+          addNew.mutate({ position, input }, { onSuccess: () => setZoom(null) })
+        }
+        adding={addNew.isPending}
       />
     </div>
   )

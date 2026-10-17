@@ -1,9 +1,13 @@
-import { ArrowLeftRight, ExternalLink, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowLeftRight, ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import type { BinderTemplateCard, CollectionItem } from '../../../shared/schemas'
-import { CopyBadges } from '@/components/CopyControls'
+import { DEFAULT_CONDITION, type Condition, type Variant } from '../../../shared/copies'
+import type { AddToPocketInput, BinderTemplateCard, CollectionItem } from '../../../shared/schemas'
+import { ConditionSelect, CopyBadges, VariantPicker } from '@/components/CopyControls'
 import { TiltCard, highResUrl } from '@/components/TiltCard'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
+import { useCard } from '@/hooks/useCards'
 import {
   Dialog,
   DialogContent,
@@ -24,10 +28,21 @@ interface Props {
   /** Só em binder livre: abre o seletor para trocar a carta do bolso. */
   onSwap?: (position: number) => void
   onRemove: (position: number) => void
+  /** Carta que falta: adiciona à coleção e já coloca no bolso. */
+  onAddMissing: (position: number, input: AddToPocketInput) => void
+  adding: boolean
 }
 
 /** Zoom da carta do bolso, com a carta inclinando no ponteiro. */
-export function PocketDialog({ target, onClose, label, onSwap, onRemove }: Props) {
+export function PocketDialog({
+  target,
+  onClose,
+  label,
+  onSwap,
+  onRemove,
+  onAddMissing,
+  adding,
+}: Props) {
   const open = target !== null
 
   return (
@@ -53,7 +68,12 @@ export function PocketDialog({ target, onClose, label, onSwap, onRemove }: Props
               {target.kind === 'filled' ? (
                 <FilledInfo item={target.item} where={label(target.position)} />
               ) : (
-                <MissingInfo card={target.card} where={label(target.position)} />
+                <MissingInfo
+                  card={target.card}
+                  where={label(target.position)}
+                  adding={adding}
+                  onAdd={(input) => onAddMissing(target.position, input)}
+                />
               )}
 
               <DialogFooter className="sm:justify-start">
@@ -80,9 +100,9 @@ export function PocketDialog({ target, onClose, label, onSwap, onRemove }: Props
                     </Button>
                   </>
                 ) : (
-                  <Button asChild>
+                  <Button asChild variant="ghost">
                     <Link to={`/cards/${encodeURIComponent(target.card.id)}`}>
-                      <ExternalLink /> Ver carta e adicionar à coleção
+                      <ExternalLink /> Ver carta
                     </Link>
                   </Button>
                 )}
@@ -118,15 +138,49 @@ function FilledInfo({ item, where }: { item: CollectionItem; where: string }) {
   )
 }
 
-function MissingInfo({ card, where }: { card: BinderTemplateCard; where: string }) {
+/** Carta que falta: escolhe variante e condição e adiciona direto ao bolso. */
+function MissingInfo({
+  card,
+  where,
+  adding,
+  onAdd,
+}: {
+  card: BinderTemplateCard
+  where: string
+  adding: boolean
+  onAdd: (input: AddToPocketInput) => void
+}) {
+  // As variantes não ficam no molde do binder: vêm do detalhe da carta (cacheado).
+  const detail = useCard(card.id)
+  const [variant, setVariant] = useState<Variant | undefined>()
+  const [condition, setCondition] = useState<Condition>(DEFAULT_CONDITION)
+  const variants = detail.data?.variants ?? []
+  const chosen = variant ?? variants[0]
+
   return (
     <>
       <DialogHeader>
         <DialogTitle className="text-2xl">{card.name}</DialogTitle>
-        <DialogDescription>#{card.localId}</DialogDescription>
+        <DialogDescription>#{card.localId} · você ainda não tem esta carta</DialogDescription>
       </DialogHeader>
-      <p className="text-sm">Você ainda não tem esta carta.</p>
-      <p className="text-xs text-muted-foreground">{where}</p>
+      {detail.isPending ? (
+        <Skeleton className="h-8 w-48" />
+      ) : (
+        variants.length > 1 &&
+        chosen && <VariantPicker options={variants} value={chosen} onChange={setVariant} />
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <ConditionSelect value={condition} onChange={setCondition} />
+        <Button
+          disabled={adding || detail.isPending}
+          onClick={() => onAdd({ variant: detail.isError ? undefined : chosen, condition })}
+        >
+          <Plus /> Adicionar ao binder
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Entra na sua coleção e já vai para este bolso. {where}.
+      </p>
     </>
   )
 }

@@ -2,9 +2,10 @@ import { and, desc, eq, sql } from 'drizzle-orm'
 import type { Condition, Variant } from '../../shared/copies.js'
 import type { Language } from '../../shared/languages.js'
 import { MAX_QUANTITY } from '../../shared/schemas.js'
-import type { CollectionItem, CollectionResponse } from '../../shared/schemas.js'
+import type { CardDetail, CollectionItem, CollectionResponse } from '../../shared/schemas.js'
 import type { Db } from '../db/client.js'
 import { binderSlots, collectionItems, type CollectionItemRow } from '../db/schema.js'
+import { AppError } from '../errors.js'
 
 export interface CardSnapshot {
   cardId: string
@@ -15,6 +16,33 @@ export interface CardSnapshot {
   setName: string | null
   localId: string | null
   rarity: string | null
+}
+
+/** Snapshot gravado na coleção; sempre a partir do TCGdex (servidor), nunca do cliente. */
+export function snapshotOf(card: CardDetail, language: Language): CardSnapshot {
+  return {
+    cardId: card.id,
+    language,
+    name: card.name,
+    imageUrl: card.imageUrl,
+    setId: card.set.id,
+    setName: card.set.name,
+    localId: card.localId,
+    rarity: card.rarity,
+  }
+}
+
+/** Sem variante pedida, vale a primeira em que a carta foi impressa. */
+export function resolveVariant(card: CardDetail, requested: Variant | undefined): Variant {
+  const variant = requested ?? card.variants[0]!
+  if (!card.variants.includes(variant)) {
+    throw new AppError(
+      400,
+      'VARIANT_NOT_AVAILABLE',
+      `${card.name} não foi impressa nessa variante.`,
+    )
+  }
+  return variant
 }
 
 /** Em quantos binders distintos o item aparece (subconsulta correlacionada). */
@@ -78,6 +106,12 @@ export function createCollectionService(db: Db) {
     async get(userId: string, id: number) {
       const [row] = await db.select().from(collectionItems).where(byId(userId, id))
       return row ?? null
+    },
+
+    /** A cópia como a API devolve (com binderCount). */
+    async item(userId: string, id: number) {
+      const row = await this.get(userId, id)
+      return row ? withBinderCount(row) : null
     },
 
     /** Insere a cópia ou soma a quantidade se ela já estiver na coleção (atômico). */

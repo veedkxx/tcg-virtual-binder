@@ -23,6 +23,8 @@ idioma escolhido.
 - Ao preencher um binder de coleção, entra a cópia mais comum na melhor condição (normal NM primeiro).
 - O bolso mostra a variante quando não é normal (ex.: `×1 · RH`).
 - Num binder de coleção dá pra trocar a cópia do bolso por outra cópia da mesma carta.
+- Carta que falta num binder de coleção: o `+` no bolso adiciona à coleção e já coloca no bolso
+  (`POST /api/binders/:id/slots/:position/add`); no zoom dá pra escolher variante e condição antes.
 
 ## Deploy
 

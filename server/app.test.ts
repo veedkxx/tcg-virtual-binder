@@ -805,6 +805,50 @@ describe('/api/binders', () => {
     expect(await fill()).toEqual({ placed: 0 })
   })
 
+  it('atalho: a carta que falta entra na coleção e já vai para o bolso', async () => {
+    const { client, create, detail } = await setup()
+    const binder = await create({ name: 'AJ', setId: 'sv09' })
+
+    const res = await client.post(`/api/binders/${binder.id}/slots/2/add`)
+    expect(res.status).toBe(201)
+    expect(await json(res)).toMatchObject({
+      cardId: 'sv09-003',
+      variant: 'normal',
+      condition: 'NM',
+      quantity: 1,
+      binderCount: 1,
+    })
+    expect((await detail(binder.id)).slots.map((s) => [s.position, s.item.cardId])).toEqual([
+      [2, 'sv09-003'],
+    ])
+
+    // Com variante e condição escolhidas, outra cópia vai para o bolso no lugar.
+    const reverse = await client.post(`/api/binders/${binder.id}/slots/2/add`, {
+      variant: 'reverse',
+      condition: 'LP',
+    })
+    expect(await json(reverse)).toMatchObject({ variant: 'reverse', condition: 'LP' })
+    const collection = await json<CollectionBody>(await client.get('/api/collection'))
+    expect(collection.items).toHaveLength(2)
+  })
+
+  it('atalho: só em binder de coleção, dentro do molde e com variante válida', async () => {
+    const { client, create } = await setup()
+    const livre = await create({ name: 'Livre' })
+    const aj = await create({ name: 'AJ', setId: 'sv09' })
+    const add = (id: string, pos: number, body?: unknown) =>
+      client.post(`/api/binders/${id}/slots/${pos}/add`, body)
+
+    expect((await add(livre.id, 0)).status).toBe(400)
+    expect((await add(aj.id, 12)).status).toBe(400)
+    expect((await add(aj.id, 0, { variant: 'holo' })).status).toBe(400)
+    const collection = await json<CollectionBody>(await client.get('/api/collection'))
+    expect(collection.items).toEqual([])
+
+    const other = await setup('google-b')
+    expect((await other.client.post(`/api/binders/${aj.id}/slots/0/add`)).status).toBe(404)
+  })
+
   it('preencher binder em branco dá 400', async () => {
     const { client, create } = await setup()
     const binder = await create({ name: 'Livre' })

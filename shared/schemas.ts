@@ -204,6 +204,14 @@ export const RenameBinderSchema = z.object({ name: BinderNameSchema })
 
 export const BinderPositionSchema = z.coerce.number().int().min(0).max(MAX_BINDER_POSITION)
 
+/** Adiciona a carta reservada do bolso à coleção e já coloca no bolso. */
+export const AddToPocketSchema = z.object({
+  variant: VariantSchema.optional(),
+  condition: ConditionSchema.default(DEFAULT_CONDITION),
+  quantity: QuantitySchema.default(1),
+})
+export type AddToPocketInput = z.input<typeof AddToPocketSchema>
+
 export const PutSlotSchema = z.object({
   collectionItemId: z.number().int().positive(),
 })

@@ -12,6 +12,7 @@ import {
   MeResponseSchema,
   SetListResponseSchema,
   type AddToCollectionInput,
+  type AddToPocketInput,
   type UpdateCollectionItemInput,
   type CreateBinderInput,
 } from '../../shared/schemas'
@@ -103,6 +104,12 @@ export const api = {
     request(`/api/binders/${encodeURIComponent(id)}/slots/${position}`, z.undefined(), {
       method: 'PUT',
       body: { collectionItemId },
+    }),
+
+  addToPocket: (id: string, position: number, input: AddToPocketInput = {}) =>
+    request(`/api/binders/${encodeURIComponent(id)}/slots/${position}/add`, CollectionItemSchema, {
+      method: 'POST',
+      body: input,
     }),
 
   clearSlot: (id: string, position: number) =>

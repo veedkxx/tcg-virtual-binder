@@ -172,6 +172,18 @@ export function createBindersService(db: Db) {
       await db.delete(binders).where(eq(binders.id, binderId))
     },
 
+    /** A carta que o molde reserva para o bolso (só em binder de coleção). */
+    async reservedCard(userId: string, binderId: string, position: number) {
+      const b = await owned(userId, binderId)
+      if (!b.template) {
+        throw new AppError(400, 'BINDER_HAS_NO_SET', 'Esse binder não tem cartas reservadas.')
+      }
+      const card = b.template[position]
+      if (!card)
+        throw new AppError(400, 'POSITION_OUT_OF_SET', 'Esse bolso não existe neste binder.')
+      return { language: b.language as Language, card }
+    },
+
     /** Coloca (ou troca) a carta de um bolso. */
     async putSlot(userId: string, binderId: string, position: number, collectionItemId: number) {
       const b = await owned(userId, binderId)

@@ -72,7 +72,11 @@ export function createApp(deps: {
     '/api/binders',
     session,
     requireAuth,
-    createBindersRouter({ binders: createBindersService(deps.db), cards: deps.cards }),
+    createBindersRouter({
+      binders: createBindersService(deps.db),
+      collection: createCollectionService(deps.db),
+      cards: deps.cards,
+    }),
   )
 
   app.use('/api', (_req, _res, next) => {
