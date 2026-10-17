@@ -152,12 +152,13 @@ function toVariants(raw: Record<string, boolean | null | undefined> | null | und
  * Os nomes vêm traduzidos em alguns idiomas ("Normal", "Reverse"), por isso o toLowerCase.
  */
 function toBoosterVariants(
-  detailed: { type: string; stamp?: string[] | null; foil?: string | null }[] | null | undefined,
+  // `type` opcional: a Vercel compila sem strictNullChecks e aí o zod infere tudo como opcional.
+  detailed: { type?: string; stamp?: string[] | null; foil?: string | null }[] | null | undefined,
   all: Variant[],
 ): Variant[] {
   if (!detailed || detailed.length === 0) return all
   const plain = new Set(
-    detailed.filter((d) => !d.stamp?.length && !d.foil).map((d) => d.type.toLowerCase()),
+    detailed.filter((d) => !d.stamp?.length && !d.foil).map((d) => (d.type ?? '').toLowerCase()),
   )
   const found = all.filter((v) => plain.has(v.toLowerCase()))
   return found.length > 0 ? found : all
