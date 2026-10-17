@@ -12,6 +12,8 @@ import {
   MeResponseSchema,
   SetListResponseSchema,
   type AddToCollectionInput,
+  type AddToPocketInput,
+  type UpdateCollectionItemInput,
   type CreateBinderInput,
 } from '../../shared/schemas'
 
@@ -68,16 +70,11 @@ export const api = {
   addToCollection: (input: AddToCollectionInput) =>
     request('/api/collection', CollectionItemSchema, { method: 'POST', body: input }),
 
-  setQuantity: (cardId: string, lang: Language, quantity: number) =>
-    request(`/api/collection/${encodeURIComponent(cardId)}?${qs({ lang })}`, CollectionItemSchema, {
-      method: 'PATCH',
-      body: { quantity },
-    }),
+  updateCollectionItem: (id: number, patch: UpdateCollectionItemInput) =>
+    request(`/api/collection/${id}`, CollectionItemSchema, { method: 'PATCH', body: patch }),
 
-  removeFromCollection: (cardId: string, lang: Language) =>
-    request(`/api/collection/${encodeURIComponent(cardId)}?${qs({ lang })}`, z.undefined(), {
-      method: 'DELETE',
-    }),
+  removeCollectionItem: (id: number) =>
+    request(`/api/collection/${id}`, z.undefined(), { method: 'DELETE' }),
 
   listSets: (lang: Language) => request(`/api/sets?${qs({ lang })}`, SetListResponseSchema),
 
@@ -107,6 +104,12 @@ export const api = {
     request(`/api/binders/${encodeURIComponent(id)}/slots/${position}`, z.undefined(), {
       method: 'PUT',
       body: { collectionItemId },
+    }),
+
+  addToPocket: (id: string, position: number, input: AddToPocketInput = {}) =>
+    request(`/api/binders/${encodeURIComponent(id)}/slots/${position}/add`, CollectionItemSchema, {
+      method: 'POST',
+      body: input,
     }),
 
   clearSlot: (id: string, position: number) =>

@@ -1,0 +1,1 @@
+ALTER TABLE `binders` ADD `set_type` text;

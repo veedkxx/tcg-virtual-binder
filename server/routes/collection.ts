@@ -1,16 +1,24 @@
 import { Router } from 'express'
+import type { Language } from '../../shared/languages.js'
 import {
   AddToCollectionSchema,
+  CollectionItemIdSchema,
   LangQuerySchema,
-  SetQuantitySchema,
+  UpdateCollectionItemSchema,
 } from '../../shared/schemas.js'
 import { AppError } from '../errors.js'
 import { currentUser } from '../middleware/session.js'
-import type { CollectionService } from '../services/collection.js'
+import { resolveVariant, snapshotOf, type CollectionService } from '../services/collection.js'
 import type { CardsProvider } from '../services/tcgdex.js'
 
+const notInCollection = () =>
+  new AppError(404, 'NOT_IN_COLLECTION', 'Essa carta não está na coleção.')
+
 // Este router é montado atrás de `requireAuth`; todos os handlers usam o usuário da sessão.
-export function createCollectionRouter(deps: { collection: CollectionService; cards: CardsProvider }) {
+export function createCollectionRouter(deps: {
+  collection: CollectionService
+  cards: CardsProvider
+}) {
   const { collection, cards } = deps
   const router = Router()
 
@@ -28,43 +36,42 @@ export function createCollectionRouter(deps: { collection: CollectionService; ca
 
   router.post('/', async (req, res) => {
     const { id: userId } = currentUser(res)
-    const { cardId, language, quantity } = AddToCollectionSchema.parse(req.body)
+    const input = AddToCollectionSchema.parse(req.body)
 
-    // O snapshot vem do TCGdex (servidor), nunca do cliente.
-    const card = await cards.get({ lang: language, id: cardId })
+    // O snapshot e as variantes vêm do TCGdex (servidor), nunca do cliente.
+    const card = await cards.get({ lang: input.language, id: input.cardId })
     const item = await collection.add(
       userId,
-      {
-        cardId: card.id,
-        language,
-        name: card.name,
-        imageUrl: card.imageUrl,
-        setId: card.set.id,
-        setName: card.set.name,
-        localId: card.localId,
-        rarity: card.rarity,
-      },
-      quantity,
+      snapshotOf(card, input.language),
+      { variant: resolveVariant(card, input.variant), condition: input.condition },
+      input.quantity,
     )
     res.status(201).json(item)
   })
 
-  router.patch('/:cardId', async (req, res) => {
+  router.patch('/:id', async (req, res) => {
     const { id: userId } = currentUser(res)
-    const { lang } = LangQuerySchema.parse(req.query)
-    const { quantity } = SetQuantitySchema.parse(req.body)
+    const id = CollectionItemIdSchema.parse(req.params.id)
+    const patch = UpdateCollectionItemSchema.parse(req.body)
 
-    const item = await collection.setQuantity(userId, req.params.cardId, lang, quantity)
-    if (!item) throw new AppError(404, 'NOT_IN_COLLECTION', 'Essa carta não está na coleção.')
+    if (patch.variant) {
+      const current = await collection.get(userId, id)
+      if (!current) throw notInCollection()
+      if (patch.variant !== current.variant) {
+        const card = await cards.get({ lang: current.language as Language, id: current.cardId })
+        resolveVariant(card, patch.variant)
+      }
+    }
+
+    const item = await collection.update(userId, id, patch)
+    if (!item) throw notInCollection()
     res.json(item)
   })
 
-  router.delete('/:cardId', async (req, res) => {
+  router.delete('/:id', async (req, res) => {
     const { id: userId } = currentUser(res)
-    const { lang } = LangQuerySchema.parse(req.query)
-
-    const removed = await collection.remove(userId, req.params.cardId, lang)
-    if (!removed) throw new AppError(404, 'NOT_IN_COLLECTION', 'Essa carta não está na coleção.')
+    const id = CollectionItemIdSchema.parse(req.params.id)
+    if (!(await collection.remove(userId, id))) throw notInCollection()
     res.status(204).end()
   })
 

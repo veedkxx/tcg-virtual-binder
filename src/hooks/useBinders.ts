@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import type { BinderDetail, CollectionItem } from '../../shared/schemas'
+import type { SetType } from '../../shared/setTypes'
+import type { AddToPocketInput, BinderDetail, CollectionItem } from '../../shared/schemas'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import { useUiStore } from '@/store/ui'
@@ -55,7 +56,7 @@ export function useCreateBinder() {
   const language = useUiStore((s) => s.language)
   const invalidate = useInvalidateBinders()
   return useMutation({
-    mutationFn: (input: { name: string; setId?: string; fill: boolean }) =>
+    mutationFn: (input: { name: string; setId?: string; setType?: SetType; fill: boolean }) =>
       api.createBinder({ ...input, language }),
     onSuccess: (binder) => {
       toast.success(
@@ -147,5 +148,14 @@ export function useSlotMutations(binderId: string) {
     onSettled: invalidate,
   })
 
-  return { put, clear }
+  /** Carta que falta num binder de coleção: entra na coleção e já vai para o bolso. */
+  const addNew = useMutation({
+    mutationFn: ({ position, input }: { position: number; input?: AddToPocketInput }) =>
+      api.addToPocket(binderId, position, input),
+    onSuccess: (item) => toast.success(`${item.name} adicionada à coleção e ao binder.`),
+    onError: (e) => toast.error(errorMessage(e)),
+    onSettled: invalidate,
+  })
+
+  return { put, clear, addNew }
 }

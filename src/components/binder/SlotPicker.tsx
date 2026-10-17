@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { compareCopies, type Variant } from '../../../shared/copies'
 import type { CollectionItem } from '../../../shared/schemas'
 import { CardImage } from '@/components/CardImage'
+import { CopyBadges } from '@/components/CopyControls'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -22,23 +24,30 @@ interface Props {
   /** Página e bolso (1-based) só para o título. */
   label: string
   onPick: (item: CollectionItem) => void
+  /** Binder de coleção: o bolso só aceita cópias desta carta (e desta variante, no Master Set). */
+  onlyCardId?: string
+  onlyVariant?: Variant
 }
 
 const normalize = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-/** Escolhe uma carta da coleção para um bolso de binder livre. */
-export function SlotPicker({ open, onOpenChange, label, onPick }: Props) {
+/** Escolhe uma cópia da coleção para um bolso. */
+export function SlotPicker({ open, onOpenChange, label, onPick, onlyCardId, onlyVariant }: Props) {
   const collection = useCollection()
   const [query, setQuery] = useState('')
 
   const items = useMemo(() => {
     const q = normalize(query.trim())
-    const all = collection.data?.items ?? []
+    const all = (collection.data?.items ?? []).filter(
+      (i) =>
+        (!onlyCardId || i.cardId === onlyCardId) && (!onlyVariant || i.variant === onlyVariant),
+    )
+    if (onlyCardId) all.sort(compareCopies)
     if (!q) return all
     return all.filter((i) =>
       normalize([i.name, i.setName, i.localId, i.cardId].filter(Boolean).join(' ')).includes(q),
     )
-  }, [collection.data, query])
+  }, [collection.data, query, onlyCardId, onlyVariant])
 
   return (
     <Dialog
@@ -50,11 +59,11 @@ export function SlotPicker({ open, onOpenChange, label, onPick }: Props) {
     >
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Escolher carta</DialogTitle>
+          <DialogTitle>{onlyCardId ? 'Escolher cópia' : 'Escolher carta'}</DialogTitle>
           <DialogDescription>{label}</DialogDescription>
         </DialogHeader>
 
-        <div className="relative">
+        <div className={onlyCardId ? 'hidden' : 'relative'}>
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             autoFocus
@@ -106,6 +115,11 @@ export function SlotPicker({ open, onOpenChange, label, onPick }: Props) {
                   />
                   <Badge className="absolute right-2 top-2 shadow">×{item.quantity}</Badge>
                   <span className="truncate px-0.5 text-xs font-medium">{item.name}</span>
+                  <CopyBadges
+                    variant={item.variant}
+                    condition={item.condition}
+                    full={!!onlyCardId}
+                  />
                   <span className="truncate px-0.5 text-[11px] text-muted-foreground">
                     {item.binderCount === 0
                       ? 'Em nenhum binder'

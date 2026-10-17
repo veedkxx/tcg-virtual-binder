@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import {
+  AddToPocketSchema,
   BinderPositionSchema,
   CreateBinderSchema,
   LangQuerySchema,
@@ -8,11 +9,17 @@ import {
 } from '../../shared/schemas.js'
 import { currentUser } from '../middleware/session.js'
 import type { BindersService } from '../services/binders.js'
+import { buildSetTemplate } from '../services/setTemplate.js'
+import { resolveVariant, snapshotOf, type CollectionService } from '../services/collection.js'
 import type { CardsProvider } from '../services/tcgdex.js'
 
 // Este router é montado atrás de `requireAuth`; todos os handlers usam o usuário da sessão.
-export function createBindersRouter(deps: { binders: BindersService; cards: CardsProvider }) {
-  const { binders, cards } = deps
+export function createBindersRouter(deps: {
+  binders: BindersService
+  collection: CollectionService
+  cards: CardsProvider
+}) {
+  const { binders, collection, cards } = deps
   const router = Router()
 
   // Dados do usuário: nunca cachear.
@@ -29,10 +36,15 @@ export function createBindersRouter(deps: { binders: BindersService; cards: Card
 
   router.post('/', async (req, res) => {
     const { id: userId } = currentUser(res)
-    const { name, language, setId, fill } = CreateBinderSchema.parse(req.body)
+    const { name, language, setId, setType, fill } = CreateBinderSchema.parse(req.body)
 
     // O molde vem do TCGdex (servidor), nunca do cliente.
-    const set = setId ? await cards.getSet({ lang: language, id: setId }) : undefined
+    let set
+    if (setId) {
+      const detail = await cards.getSet({ lang: language, id: setId })
+      const template = await buildSetTemplate(cards, language, detail, setType)
+      set = { summary: detail, type: setType, template }
+    }
     res.status(201).json(await binders.create(userId, { name, language, set, fill }))
   })
 
@@ -65,6 +77,28 @@ export function createBindersRouter(deps: { binders: BindersService; cards: Card
     const { collectionItemId } = PutSlotSchema.parse(req.body)
     await binders.putSlot(userId, req.params.id, position, collectionItemId)
     res.status(204).end()
+  })
+
+  // Atalho do binder de coleção: a carta que falta entra na coleção e já vai para o bolso.
+  router.post('/:id/slots/:position/add', async (req, res) => {
+    const { id: userId } = currentUser(res)
+    const position = BinderPositionSchema.parse(req.params.position)
+    const input = AddToPocketSchema.parse(req.body ?? {})
+
+    const { language, card: reserved } = await binders.reservedCard(userId, req.params.id, position)
+    const card = await cards.get({ lang: language, id: reserved.id })
+    const item = await collection.add(
+      userId,
+      snapshotOf(card, language),
+      // Bolso de Master Set já define a variante.
+      {
+        variant: resolveVariant(card, reserved.variant ?? input.variant),
+        condition: input.condition,
+      },
+      input.quantity,
+    )
+    await binders.putSlot(userId, req.params.id, position, item.id)
+    res.status(201).json(await collection.item(userId, item.id))
   })
 
   router.delete('/:id/slots/:position', async (req, res) => {

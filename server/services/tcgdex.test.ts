@@ -42,6 +42,7 @@ describe('tcgdex', () => {
       logoUrl: 'https://assets.tcgdex.net/pt/sv/sv09/logo.webp',
       symbolUrl: null,
       cardCount: 2,
+      officialCount: null,
       cards: [
         {
           id: 'sv09-001',
@@ -52,6 +53,48 @@ describe('tcgdex', () => {
         { id: 'sv09-002', localId: '002', name: 'Metapod', imageUrl: null },
       ],
     })
+  })
+
+  it('carta: variantes na ordem do app; sem informação, assume normal', async () => {
+    const card = (variants?: unknown) => ({
+      id: 'base1-4',
+      localId: '4',
+      name: 'Charizard',
+      set: { id: 'base1', name: 'Base' },
+      ...(variants === undefined ? {} : { variants }),
+    })
+    fetchMock.mockResolvedValueOnce(
+      ok(card({ holo: true, firstEdition: true, normal: false, reverse: false, wPromo: false })),
+    )
+    expect((await tcgdex.get({ lang: 'en', id: 'base1-4' })).variants).toEqual([
+      'holo',
+      'firstEdition',
+    ])
+
+    clearTcgdexCache()
+    fetchMock.mockResolvedValueOnce(ok(card()))
+    expect((await tcgdex.get({ lang: 'en', id: 'base1-4' })).variants).toEqual(['normal'])
+  })
+
+  it('versões de booster: ignora impressões com carimbo ou acabamento especial', async () => {
+    fetchMock.mockResolvedValueOnce(
+      ok({
+        id: 'sv09-047',
+        localId: '047',
+        name: "Iono's Voltorb",
+        set: { id: 'sv09', name: 'Journey Together' },
+        variants: { normal: true, reverse: true, holo: true },
+        variants_detailed: [
+          { type: 'Normal' },
+          { type: 'Reverse' },
+          { type: 'holo', stamp: ['player-rewards-program'], foil: 'cosmos' },
+          { type: 'reverse', foil: 'pokeball' },
+        ],
+      }),
+    )
+    const card = await tcgdex.get({ lang: 'pt', id: 'sv09-047' })
+    expect(card.variants).toEqual(['normal', 'reverse', 'holo'])
+    expect(card.boosterVariants).toEqual(['normal', 'reverse'])
   })
 
   it('lista coleções da mais nova para a mais antiga', async () => {

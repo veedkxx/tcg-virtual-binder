@@ -1,5 +1,7 @@
 import { z } from 'zod'
+import { CONDITIONS, DEFAULT_CONDITION, VARIANTS } from './copies.js'
 import { DEFAULT_LANGUAGE, ENABLED_LANGUAGES } from './languages.js'
+import { SET_TYPES } from './setTypes.js'
 
 export const MAX_QUANTITY = 9999
 export const SEARCH_PAGE_SIZE = 20
@@ -9,6 +11,9 @@ export const POCKETS_PER_PAGE = 9
 export const MAX_BINDER_POSITION = 10_000 * POCKETS_PER_PAGE - 1
 
 export const LanguageSchema = z.enum(ENABLED_LANGUAGES)
+export const VariantSchema = z.enum(VARIANTS)
+export const ConditionSchema = z.enum(CONDITIONS)
+export const SetTypeSchema = z.enum(SET_TYPES)
 
 // ---------- Cartas (TCGdex normalizado) ----------
 
@@ -38,6 +43,10 @@ export const CardDetailSchema = CardSummarySchema.extend({
   hp: z.number().nullable(),
   types: z.array(z.string()),
   description: z.string().nullable(),
+  /** Variantes em que a carta foi impressa (nunca vazio). */
+  variants: z.array(VariantSchema).min(1),
+  /** Só as versões que saem nos boosters (sem carimbos/acabamentos especiais): Master Set. */
+  boosterVariants: z.array(VariantSchema).min(1),
   set: z.object({
     id: z.string(),
     name: z.string(),
@@ -54,7 +63,10 @@ export const SetSummarySchema = z.object({
   name: z.string(),
   logoUrl: z.string().nullable(),
   symbolUrl: z.string().nullable(),
+  /** Total de cartas, incluindo as secretas. */
   cardCount: z.number().nullable(),
+  /** Último número oficial (sem as secretas): Core Set. */
+  officialCount: z.number().nullable(),
 })
 export type SetSummary = z.infer<typeof SetSummarySchema>
 
@@ -71,6 +83,8 @@ export const CollectionItemSchema = z.object({
   id: z.number().int(),
   cardId: z.string(),
   language: LanguageSchema,
+  variant: VariantSchema,
+  condition: ConditionSchema,
   quantity: z.number().int().min(1),
   name: z.string(),
   imageUrl: z.string().nullable(),
@@ -78,7 +92,7 @@ export const CollectionItemSchema = z.object({
   setName: z.string().nullable(),
   localId: z.string().nullable(),
   rarity: z.string().nullable(),
-  /** Em quantos binders diferentes a carta aparece. */
+  /** Em quantos binders diferentes esta cópia aparece. */
   binderCount: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -96,8 +110,13 @@ export type CollectionResponse = z.infer<typeof CollectionResponseSchema>
 
 // ---------- Binders ----------
 
-/** Carta reservada para um bolso de binder criado a partir de uma coleção. */
-export const BinderTemplateCardSchema = CardSummarySchema
+/**
+ * Carta reservada para um bolso de binder criado a partir de uma coleção. No Master Set o bolso
+ * também é de uma variante (normal/reverse/holo); sem `variant`, qualquer cópia serve.
+ */
+export const BinderTemplateCardSchema = CardSummarySchema.extend({
+  variant: VariantSchema.optional(),
+})
 export type BinderTemplateCard = z.infer<typeof BinderTemplateCardSchema>
 
 export const BinderSummarySchema = z.object({
@@ -106,6 +125,8 @@ export const BinderSummarySchema = z.object({
   language: LanguageSchema,
   /** Coleção de origem; null = binder em branco. */
   set: z.object({ id: z.string(), name: z.string(), logoUrl: z.string().nullable() }).nullable(),
+  /** Core ou Master; null em binder em branco e nos criados antes da Sprint 4. */
+  setType: SetTypeSchema.nullable(),
   /** Bolsos ocupados. */
   filled: z.number().int(),
   /** Bolsos reservados pela coleção de origem (null em binder em branco). */
@@ -160,13 +181,26 @@ export const SearchQuerySchema = LangQuerySchema.extend({
 export const AddToCollectionSchema = z.object({
   cardId: z.string().trim().min(1).max(100),
   language: LanguageSchema.default(DEFAULT_LANGUAGE),
+  /** Sem variante, vale a primeira em que a carta foi impressa. */
+  variant: VariantSchema.optional(),
+  condition: ConditionSchema.default(DEFAULT_CONDITION),
   quantity: QuantitySchema.default(1),
 })
 export type AddToCollectionInput = z.input<typeof AddToCollectionSchema>
 
-export const SetQuantitySchema = z.object({
-  quantity: QuantitySchema,
-})
+export const CollectionItemIdSchema = z.coerce.number().int().positive()
+
+/** Muda quantidade, variante e/ou condição de uma cópia. */
+export const UpdateCollectionItemSchema = z
+  .object({
+    quantity: QuantitySchema.optional(),
+    variant: VariantSchema.optional(),
+    condition: ConditionSchema.optional(),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), {
+    message: 'Informe quantity, variant ou condition.',
+  })
+export type UpdateCollectionItemInput = z.infer<typeof UpdateCollectionItemSchema>
 
 const BinderNameSchema = z.string().trim().min(1).max(60)
 
@@ -175,6 +209,8 @@ export const CreateBinderSchema = z.object({
   language: LanguageSchema.default(DEFAULT_LANGUAGE),
   /** Coleção do TCGdex para usar como molde (opcional). */
   setId: z.string().trim().min(1).max(40).optional(),
+  /** Com molde: Core Set (uma de cada carta numerada) ou Master Set (cada versão). */
+  setType: SetTypeSchema.default('core'),
   /** Com molde: já coloca nos bolsos as cartas que o usuário tem. */
   fill: z.boolean().default(false),
 })
@@ -183,6 +219,14 @@ export type CreateBinderInput = z.input<typeof CreateBinderSchema>
 export const RenameBinderSchema = z.object({ name: BinderNameSchema })
 
 export const BinderPositionSchema = z.coerce.number().int().min(0).max(MAX_BINDER_POSITION)
+
+/** Adiciona a carta reservada do bolso à coleção e já coloca no bolso. */
+export const AddToPocketSchema = z.object({
+  variant: VariantSchema.optional(),
+  condition: ConditionSchema.default(DEFAULT_CONDITION),
+  quantity: QuantitySchema.default(1),
+})
+export type AddToPocketInput = z.input<typeof AddToPocketSchema>
 
 export const PutSlotSchema = z.object({
   collectionItemId: z.number().int().positive(),

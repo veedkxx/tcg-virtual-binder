@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm'
+import { compareCopies, VARIANT_LABELS } from '../../shared/copies.js'
 import type { Language } from '../../shared/languages.js'
 import type {
   BinderDetail,
   BinderSummary,
   BinderTemplateCard,
-  SetDetail,
+  SetSummary,
 } from '../../shared/schemas.js'
+import type { SetType } from '../../shared/setTypes.js'
 import type { Db } from '../db/client.js'
 import { binderSlots, binders, collectionItems, type BinderRow } from '../db/schema.js'
 import { AppError } from '../errors.js'
@@ -20,6 +22,7 @@ function toSummary(b: BinderRow, filled: number): BinderSummary {
     name: b.name,
     language: b.language as Language,
     set: b.setId ? { id: b.setId, name: b.setName ?? b.setId, logoUrl: b.setLogoUrl } : null,
+    setType: b.setType ?? null,
     filled,
     templateSize: b.template?.length ?? null,
     createdAt: b.createdAt,
@@ -57,7 +60,12 @@ export function createBindersService(db: Db) {
 
     const [items, taken] = await Promise.all([
       db
-        .select({ id: collectionItems.id, cardId: collectionItems.cardId })
+        .select({
+          id: collectionItems.id,
+          cardId: collectionItems.cardId,
+          variant: collectionItems.variant,
+          condition: collectionItems.condition,
+        })
         .from(collectionItems)
         .where(
           and(
@@ -75,10 +83,17 @@ export function createBindersService(db: Db) {
         .where(eq(binderSlots.binderId, b.id)),
     ])
 
-    const itemByCard = new Map(items.map((i) => [i.cardId, i.id]))
+    // Com várias cópias da mesma carta, vai a mais comum em melhor estado (normal NM primeiro).
+    // Bolso com variante (Master Set) só aceita aquela variante; sem variante, vale a melhor cópia.
+    const itemByKey = new Map<string, number>()
+    for (const i of [...items].sort(compareCopies)) {
+      for (const key of [i.cardId, `${i.cardId}|${i.variant}`]) {
+        if (!itemByKey.has(key)) itemByKey.set(key, i.id)
+      }
+    }
     const takenPositions = new Set(taken.map((t) => t.position))
     const rows = template.flatMap((card, position) => {
-      const collectionItemId = itemByCard.get(card.id)
+      const collectionItemId = itemByKey.get(card.variant ? `${card.id}|${card.variant}` : card.id)
       return collectionItemId && !takenPositions.has(position)
         ? [{ binderId: b.id, position, collectionItemId }]
         : []
@@ -103,11 +118,17 @@ export function createBindersService(db: Db) {
       return rows.map((r) => toSummary(r.binder, r.filled))
     },
 
+    /** `set` e `template` vêm juntos (binder de coleção) ou nenhum dos dois (binder em branco). */
     async create(
       userId: string,
-      input: { name: string; language: Language; set?: SetDetail; fill: boolean },
+      input: {
+        name: string
+        language: Language
+        set?: { summary: SetSummary; type: SetType; template: BinderTemplateCard[] }
+        fill: boolean
+      },
     ) {
-      const template: BinderTemplateCard[] | null = input.set?.cards ?? null
+      const template = input.set?.template ?? null
       const [b] = await db
         .insert(binders)
         .values({
@@ -115,9 +136,10 @@ export function createBindersService(db: Db) {
           userId,
           name: input.name,
           language: input.language,
-          setId: input.set?.id ?? null,
-          setName: input.set?.name ?? null,
-          setLogoUrl: input.set?.logoUrl ?? null,
+          setId: input.set?.summary.id ?? null,
+          setName: input.set?.summary.name ?? null,
+          setLogoUrl: input.set?.summary.logoUrl ?? null,
+          setType: input.set?.type ?? null,
           template,
         })
         .returning()
@@ -162,6 +184,18 @@ export function createBindersService(db: Db) {
       await db.delete(binders).where(eq(binders.id, binderId))
     },
 
+    /** A carta que o molde reserva para o bolso (só em binder de coleção). */
+    async reservedCard(userId: string, binderId: string, position: number) {
+      const b = await owned(userId, binderId)
+      if (!b.template) {
+        throw new AppError(400, 'BINDER_HAS_NO_SET', 'Esse binder não tem cartas reservadas.')
+      }
+      const card = b.template[position]
+      if (!card)
+        throw new AppError(400, 'POSITION_OUT_OF_SET', 'Esse bolso não existe neste binder.')
+      return { language: b.language as Language, card }
+    },
+
     /** Coloca (ou troca) a carta de um bolso. */
     async putSlot(userId: string, binderId: string, position: number, collectionItemId: number) {
       const b = await owned(userId, binderId)
@@ -184,6 +218,13 @@ export function createBindersService(db: Db) {
             400,
             'WRONG_CARD_FOR_POCKET',
             `Esse bolso é da carta ${reserved.name} (#${reserved.localId}).`,
+          )
+        }
+        if (reserved.variant && reserved.variant !== item.variant) {
+          throw new AppError(
+            400,
+            'WRONG_VARIANT_FOR_POCKET',
+            `Esse bolso é da versão ${VARIANT_LABELS[reserved.variant]} de ${reserved.name}.`,
           )
         }
       }

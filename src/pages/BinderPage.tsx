@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { ArrowLeft, ChevronLeft, ChevronRight, Pencil, Sparkles, Trash2 } from 'lucide-react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { compareCopies, type Variant } from '../../shared/copies'
+import { SET_TYPE_LABELS } from '../../shared/setTypes'
 import { POCKETS_PER_PAGE, type BinderDetail, type CollectionItem } from '../../shared/schemas'
 import { Pocket, type PocketState } from '@/components/binder/Pocket'
 import { PocketDialog, type PocketDialogTarget } from '@/components/binder/PocketDialog'
@@ -98,7 +100,7 @@ export function BinderPage() {
 
 function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactNode }) {
   const collection = useCollection()
-  const { put, clear } = useSlotMutations(binder.id)
+  const { put, clear, addNew } = useSlotMutations(binder.id)
   const fill = useFillBinder(binder.id)
 
   const wide = useMediaQuery(WIDE_QUERY)
@@ -172,17 +174,30 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
     () => new Map(binder.slots.map((s) => [s.position, s.item])),
     [binder.slots],
   )
-  const ownedByCard = useMemo(
-    () => new Map(collection.data?.items.map((i) => [i.cardId, i])),
-    [collection.data],
-  )
+  // Cópias que o usuário tem, por carta e por carta+variante (bolso de Master Set): a "melhor"
+  // (normal NM primeiro) vai para o bolso com um toque; o total aparece no selo.
+  const ownedByKey = useMemo(() => {
+    const owned = new Map<string, { best: CollectionItem; total: number; copies: number }>()
+    for (const i of [...(collection.data?.items ?? [])].sort(compareCopies)) {
+      for (const key of [i.cardId, `${i.cardId}|${i.variant}`]) {
+        const o = owned.get(key)
+        if (o) {
+          o.total += i.quantity
+          o.copies += 1
+        } else owned.set(key, { best: i, total: i.quantity, copies: 1 })
+      }
+    }
+    return owned
+  }, [collection.data])
+  const ownedFor = (card: { id: string; variant?: Variant }) =>
+    ownedByKey.get(card.variant ? `${card.id}|${card.variant}` : card.id)
 
   const pocketState = (position: number): PocketState => {
     const item = slotByPosition.get(position)
     if (item) return { kind: 'filled', item }
     if (!binder.template) return { kind: 'free' }
     const card = binder.template[position]
-    return card ? { kind: 'reserved', card, owned: ownedByCard.get(card.id) } : { kind: 'none' }
+    return card ? { kind: 'reserved', card, owned: ownedFor(card) } : { kind: 'none' }
   }
 
   const onPocketClick = (position: number) => {
@@ -190,7 +205,7 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
     if (state.kind === 'filled') setZoom({ kind: 'filled', position, item: state.item })
     else if (state.kind === 'free') setPicker(position)
     else if (state.kind === 'reserved') {
-      if (state.owned) put.mutate({ position, item: state.owned })
+      if (state.owned) put.mutate({ position, item: state.owned.best })
       else setZoom({ kind: 'missing', position, card: state.card })
     }
   }
@@ -201,7 +216,7 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
   const pct = total ? Math.round((binder.filled / total) * 100) : null
   const pages = Array.from({ length: perView }, (_, i) => start + i)
   const missingOwned = binder.template
-    ? binder.template.filter((c, pos) => !slotByPosition.has(pos) && ownedByCard.has(c.id)).length
+    ? binder.template.filter((c, pos) => !slotByPosition.has(pos) && ownedFor(c)).length
     : 0
 
   return (
@@ -216,7 +231,8 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
           <div className="min-w-0">
             <h1 className="truncate text-2xl font-bold">{binder.name}</h1>
             <p className="text-sm text-muted-foreground">
-              {binder.set ? binder.set.name : 'Binder livre'} ·{' '}
+              {binder.set ? binder.set.name : 'Binder livre'}
+              {binder.setType && ` · ${SET_TYPE_LABELS[binder.setType]}`} ·{' '}
               {total
                 ? `${binder.filled}/${total} cartas (${pct}%)`
                 : `${binder.filled} ${binder.filled === 1 ? 'carta' : 'cartas'}`}
@@ -283,6 +299,8 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
                         key={position}
                         state={pocketState(position)}
                         onClick={() => onPocketClick(position)}
+                        onQuickAdd={() => addNew.mutate({ position })}
+                        busy={addNew.isPending && addNew.variables?.position === position}
                       />
                     )
                   })}
@@ -338,7 +356,7 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
 
       <p className="text-center text-xs text-muted-foreground">
         {binder.template
-          ? 'Cartas com borda: você tem, toque para colocar. Apagadas: ainda faltam.'
+          ? 'Cartas com borda: você tem, toque para colocar. Apagadas: ainda faltam; o + adiciona à coleção e ao binder.'
           : 'Toque num bolso vazio para escolher uma carta da sua coleção.'}{' '}
         <span className="hidden md:inline">Use ← → para folhear.</span>
       </p>
@@ -348,21 +366,36 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
         onOpenChange={(o) => !o && setPicker(null)}
         label={picker !== null ? pocketLabel(picker) : ''}
         onPick={(item) => picker !== null && place(picker, item)}
+        onlyCardId={picker !== null ? binder.template?.[picker]?.id : undefined}
+        onlyVariant={picker !== null ? binder.template?.[picker]?.variant : undefined}
       />
 
       <PocketDialog
-        target={zoom}
+        // A cópia do bolso vem sempre do binder atual: a quantidade muda enquanto o zoom está aberto.
+        target={
+          zoom?.kind === 'filled'
+            ? { ...zoom, item: slotByPosition.get(zoom.position) ?? zoom.item }
+            : zoom
+        }
         onClose={() => setZoom(null)}
         label={pocketLabel}
+        // Binder livre: troca por qualquer carta. Binder de coleção: só por outra cópia
+        // (variante/condição) da mesma carta, se houver.
         onSwap={
-          binder.template
-            ? undefined
-            : (position) => {
+          zoom?.kind === 'filled' &&
+          (!binder.template ||
+            (ownedFor(binder.template[zoom.position] ?? { id: zoom.item.cardId })?.copies ?? 0) > 1)
+            ? (position) => {
                 setZoom(null)
                 setPicker(position)
               }
+            : undefined
         }
         onRemove={(position) => clear.mutate({ position })}
+        onAddMissing={(position, input) =>
+          addNew.mutate({ position, input }, { onSuccess: () => setZoom(null) })
+        }
+        adding={addNew.isPending}
       />
     </div>
   )

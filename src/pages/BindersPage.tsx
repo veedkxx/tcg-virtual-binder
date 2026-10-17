@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { BookOpen, Plus } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { BinderSummary } from '../../shared/schemas'
+import { SET_TYPE_LABELS } from '../../shared/setTypes'
 import { CreateBinderDialog } from '@/components/CreateBinderDialog'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -84,6 +85,7 @@ function BinderCover({ binder }: { binder: BinderSummary }) {
           <p className="truncate font-semibold">{binder.name}</p>
           <p className="truncate text-xs text-muted-foreground">
             {binder.set ? binder.set.name : 'Binder livre'}
+            {binder.setType && ` · ${SET_TYPE_LABELS[binder.setType]}`}
           </p>
         </div>
       </div>
