@@ -4,10 +4,12 @@ import { Link } from 'react-router-dom'
 import { DEFAULT_CONDITION, type Condition, type Variant } from '../../../shared/copies'
 import type { AddToPocketInput, BinderTemplateCard, CollectionItem } from '../../../shared/schemas'
 import { ConditionSelect, CopyBadges, VariantPicker } from '@/components/CopyControls'
+import { QuantityStepper } from '@/components/QuantityStepper'
 import { TiltCard, highResUrl } from '@/components/TiltCard'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useCard } from '@/hooks/useCards'
+import { useUpdateCollectionItem } from '@/hooks/useCollection'
 import {
   Dialog,
   DialogContent,
@@ -116,6 +118,15 @@ export function PocketDialog({
 }
 
 function FilledInfo({ item, where }: { item: CollectionItem; where: string }) {
+  const update = useUpdateCollectionItem()
+  // Mostra o valor novo na hora; quando a cópia volta do servidor com outra quantidade, adota.
+  const [quantity, setQuantity] = useState(item.quantity)
+  const [serverQuantity, setServerQuantity] = useState(item.quantity)
+  if (item.quantity !== serverQuantity) {
+    setServerQuantity(item.quantity)
+    setQuantity(item.quantity)
+  }
+
   const meta = [item.setName, item.localId && `#${item.localId}`, item.rarity]
     .filter(Boolean)
     .join(' · ')
@@ -126,13 +137,21 @@ function FilledInfo({ item, where }: { item: CollectionItem; where: string }) {
         <DialogDescription>{meta}</DialogDescription>
       </DialogHeader>
       <CopyBadges variant={item.variant} condition={item.condition} full />
-      <dl className="grid grid-cols-2 gap-3">
-        <Stat label="Você tem desta cópia" value={`×${item.quantity}`} />
-        <Stat
-          label="Aparece em"
-          value={`${item.binderCount} ${item.binderCount === 1 ? 'binder' : 'binders'}`}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+        <div>
+          <p className="text-xs text-muted-foreground">Você tem desta cópia</p>
+          <p className="text-xs text-muted-foreground">
+            em {item.binderCount} {item.binderCount === 1 ? 'binder' : 'binders'}
+          </p>
+        </div>
+        <QuantityStepper
+          value={quantity}
+          onChange={(q) => {
+            setQuantity(q)
+            update.mutate({ id: item.id, patch: { quantity: q } })
+          }}
         />
-      </dl>
+      </div>
       <p className="text-xs text-muted-foreground">{where}</p>
     </>
   )
@@ -154,6 +173,7 @@ function MissingInfo({
   const detail = useCard(card.id)
   const [variant, setVariant] = useState<Variant | undefined>()
   const [condition, setCondition] = useState<Condition>(DEFAULT_CONDITION)
+  const [quantity, setQuantity] = useState(1)
   const variants = detail.data?.variants ?? []
   const chosen = variant ?? variants[0]
 
@@ -171,9 +191,14 @@ function MissingInfo({
       )}
       <div className="flex flex-wrap items-center gap-2">
         <ConditionSelect value={condition} onChange={setCondition} />
+        <QuantityStepper value={quantity} onChange={setQuantity} />
+      </div>
+      <div>
         <Button
           disabled={adding || detail.isPending}
-          onClick={() => onAdd({ variant: detail.isError ? undefined : chosen, condition })}
+          onClick={() =>
+            onAdd({ variant: detail.isError ? undefined : chosen, condition, quantity })
+          }
         >
           <Plus /> Adicionar ao binder
         </Button>
@@ -182,14 +207,5 @@ function MissingInfo({
         Entra na sua coleção e já vai para este bolso. {where}.
       </p>
     </>
-  )
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border p-3">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="text-lg font-semibold tabular-nums">{value}</dd>
-    </div>
   )
 }

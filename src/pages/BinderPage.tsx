@@ -364,7 +364,12 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
       />
 
       <PocketDialog
-        target={zoom}
+        // A cópia do bolso vem sempre do binder atual: a quantidade muda enquanto o zoom está aberto.
+        target={
+          zoom?.kind === 'filled'
+            ? { ...zoom, item: slotByPosition.get(zoom.position) ?? zoom.item }
+            : zoom
+        }
         onClose={() => setZoom(null)}
         label={pocketLabel}
         // Binder livre: troca por qualquer carta. Binder de coleção: só por outra cópia
