@@ -8,6 +8,7 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core'
+import type { Condition, Variant } from '../../shared/copies.js'
 import type { BinderTemplateCard } from '../../shared/schemas.js'
 
 /** Contas. O Google é o único provedor por enquanto; `google_id` é o "sub" estável do Google. */
@@ -42,9 +43,9 @@ export const sessions = sqliteTable(
 /**
  * Itens da coleção de cada usuário.
  *
- * A chave natural é (user_id, card_id, language): a mesma carta em idiomas diferentes
- * são itens distintos, como colecionadores esperam. Variantes (normal/holo/reverse)
- * entrarão depois como uma coluna `variant` incluída nessa unicidade.
+ * Cada linha é uma "cópia": a chave natural é (user_id, card_id, language, variant, condition).
+ * A mesma carta em outro idioma, outra variante (normal/reverse/holo…) ou outra condição
+ * (NM/LP/…) é um item separado, como colecionadores esperam.
  *
  * name/image/set/rarity são um snapshot da carta, para listar a coleção sem
  * depender da API externa a cada abertura.
@@ -58,6 +59,8 @@ export const collectionItems = sqliteTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     cardId: text('card_id').notNull(),
     language: text('language').notNull().default('pt'),
+    variant: text('variant').$type<Variant>().notNull().default('normal'),
+    condition: text('condition').$type<Condition>().notNull().default('NM'),
     quantity: integer('quantity').notNull().default(1),
     name: text('name').notNull(),
     imageUrl: text('image_url'),
@@ -73,7 +76,13 @@ export const collectionItems = sqliteTable(
       .default(sql`(CURRENT_TIMESTAMP)`),
   },
   (t) => [
-    uniqueIndex('collection_items_user_card_lang_uq').on(t.userId, t.cardId, t.language),
+    uniqueIndex('collection_items_copy_uq').on(
+      t.userId,
+      t.cardId,
+      t.language,
+      t.variant,
+      t.condition,
+    ),
     check('collection_items_quantity_positive', sql`${t.quantity} >= 1`),
   ],
 )

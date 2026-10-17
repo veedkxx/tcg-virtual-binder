@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm'
+import { compareCopies } from '../../shared/copies.js'
 import type { Language } from '../../shared/languages.js'
 import type {
   BinderDetail,
@@ -57,7 +58,12 @@ export function createBindersService(db: Db) {
 
     const [items, taken] = await Promise.all([
       db
-        .select({ id: collectionItems.id, cardId: collectionItems.cardId })
+        .select({
+          id: collectionItems.id,
+          cardId: collectionItems.cardId,
+          variant: collectionItems.variant,
+          condition: collectionItems.condition,
+        })
         .from(collectionItems)
         .where(
           and(
@@ -75,7 +81,11 @@ export function createBindersService(db: Db) {
         .where(eq(binderSlots.binderId, b.id)),
     ])
 
-    const itemByCard = new Map(items.map((i) => [i.cardId, i.id]))
+    // Com várias cópias da mesma carta, vai a mais comum em melhor estado (normal NM primeiro).
+    const itemByCard = new Map<string, number>()
+    for (const i of [...items].sort(compareCopies)) {
+      if (!itemByCard.has(i.cardId)) itemByCard.set(i.cardId, i.id)
+    }
     const takenPositions = new Set(taken.map((t) => t.position))
     const rows = template.flatMap((card, position) => {
       const collectionItemId = itemByCard.get(card.id)

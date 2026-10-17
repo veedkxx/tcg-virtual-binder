@@ -54,6 +54,27 @@ describe('tcgdex', () => {
     })
   })
 
+  it('carta: variantes na ordem do app; sem informação, assume normal', async () => {
+    const card = (variants?: unknown) => ({
+      id: 'base1-4',
+      localId: '4',
+      name: 'Charizard',
+      set: { id: 'base1', name: 'Base' },
+      ...(variants === undefined ? {} : { variants }),
+    })
+    fetchMock.mockResolvedValueOnce(
+      ok(card({ holo: true, firstEdition: true, normal: false, reverse: false, wPromo: false })),
+    )
+    expect((await tcgdex.get({ lang: 'en', id: 'base1-4' })).variants).toEqual([
+      'holo',
+      'firstEdition',
+    ])
+
+    clearTcgdexCache()
+    fetchMock.mockResolvedValueOnce(ok(card()))
+    expect((await tcgdex.get({ lang: 'en', id: 'base1-4' })).variants).toEqual(['normal'])
+  })
+
   it('lista coleções da mais nova para a mais antiga', async () => {
     fetchMock.mockResolvedValueOnce(
       ok([

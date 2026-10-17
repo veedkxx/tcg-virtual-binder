@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import type { Language } from '../shared/languages.js'
 import type { BinderDetail, BinderSummary, CardDetail, SetDetail } from '../shared/schemas.js'
 import { createApp } from './app.js'
 import { createDb } from './db/client.js'
@@ -17,11 +18,12 @@ import type { CardsProvider } from './services/tcgdex.js'
 
 // Requer as migrations geradas: `npm run db:generate` (pasta ./drizzle).
 
-const fakeCard = (id: string): CardDetail => ({
+// Ids terminados em "-holo" só existem em holo; o resto em normal e reverse.
+const fakeCard = (id: string, language: Language = 'pt'): CardDetail => ({
   id,
   localId: '25',
   name: 'Pikachu',
-  language: 'pt',
+  language,
   imageUrl: `https://assets.example/${id}/low.webp`,
   imageHighUrl: `https://assets.example/${id}/high.webp`,
   category: 'Pokémon',
@@ -30,6 +32,7 @@ const fakeCard = (id: string): CardDetail => ({
   hp: 60,
   types: ['Elétrico'],
   description: null,
+  variants: id.endsWith('-holo') ? ['holo'] : ['normal', 'reverse'],
   set: { id: 'base1', name: 'Base Set', logoUrl: null, cardCount: 102 },
 })
 
@@ -57,9 +60,9 @@ const cards: CardsProvider = {
       hasMore: false,
     }
   },
-  async get({ id }) {
+  async get({ id, lang }) {
     if (id === 'missing') throw new AppError(404, 'CARD_NOT_FOUND', 'Carta não encontrada.')
-    return fakeCard(id)
+    return fakeCard(id, lang)
   },
   async listSets() {
     return [
@@ -257,7 +260,13 @@ describe('catálogo (público)', () => {
   })
 
   it('rejeita idioma não habilitado', async () => {
-    expect((await new Client().get('/api/cards?q=pikachu&lang=en')).status).toBe(400)
+    expect((await new Client().get('/api/cards?q=pikachu&lang=xx')).status).toBe(400)
+  })
+
+  it('aceita inglês e devolve as variantes da carta', async () => {
+    const res = await new Client().get('/api/cards/base1-25?lang=en')
+    expect(res.status).toBe(200)
+    expect(await json(res)).toMatchObject({ language: 'en', variants: ['normal', 'reverse'] })
   })
 })
 
@@ -427,104 +436,191 @@ describe('proteção contra CSRF (Origin)', () => {
 })
 
 describe('/api/collection', () => {
+  type ItemBody = {
+    id: number
+    cardId: string
+    language: string
+    variant: string
+    condition: string
+    quantity: number
+    binderCount: number
+  }
+
+  async function setup(sub = 'google-a') {
+    const { client } = await loginAs({ sub, email: `${sub}@example.com` })
+    const add = async (body: Record<string, unknown>) => {
+      const res = await client.post('/api/collection', body)
+      expect(res.status).toBe(201)
+      return json<ItemBody>(res)
+    }
+    const list = async (lang = 'pt') =>
+      json<CollectionBody>(await client.get(`/api/collection?lang=${lang}`))
+    return { client, add, list }
+  }
+
   it('exige login', async () => {
     const client = new Client()
     expect((await client.get('/api/collection')).status).toBe(401)
     expect((await client.post('/api/collection', { cardId: 'base1-25' })).status).toBe(401)
-    expect((await client.patch('/api/collection/base1-25', { quantity: 2 })).status).toBe(401)
-    expect((await client.delete('/api/collection/base1-25')).status).toBe(401)
+    expect((await client.patch('/api/collection/1', { quantity: 2 })).status).toBe(401)
+    expect((await client.delete('/api/collection/1')).status).toBe(401)
   })
 
   it('começa vazia', async () => {
-    const { client } = await loginAs({ sub: 'google-a', email: 'a@example.com' })
-    const body = await json(await client.get('/api/collection'))
-    expect(body).toEqual({ items: [], totals: { uniqueCards: 0, totalCards: 0 } })
+    const { list } = await setup()
+    expect(await list()).toEqual({ items: [], totals: { uniqueCards: 0, totalCards: 0 } })
   })
 
-  it('adiciona uma carta com quantidade 1 por padrão', async () => {
-    const { client } = await loginAs({ sub: 'google-a', email: 'a@example.com' })
-    const res = await client.post('/api/collection', { cardId: 'base1-25' })
-    expect(res.status).toBe(201)
-    const item = await json(res)
-    expect(item).toMatchObject({ cardId: 'base1-25', quantity: 1, language: 'pt', name: 'Pikachu' })
+  it('adiciona com quantidade 1, condição NM e a primeira variante da carta', async () => {
+    const { add } = await setup()
+    const item = await add({ cardId: 'base1-25' })
+    expect(item).toMatchObject({
+      cardId: 'base1-25',
+      quantity: 1,
+      language: 'pt',
+      variant: 'normal',
+      condition: 'NM',
+      name: 'Pikachu',
+    })
     expect(item).not.toHaveProperty('userId')
+
+    // Carta que só existe em holo: o padrão é holo.
+    expect((await add({ cardId: 'base1-4-holo' })).variant).toBe('holo')
   })
 
-  it('adicionar de novo soma a quantidade (upsert)', async () => {
-    const { client } = await loginAs({ sub: 'google-a', email: 'a@example.com' })
-    await client.post('/api/collection', { cardId: 'base1-25', quantity: 2 })
-    const second = await json<{ quantity: number }>(
-      await client.post('/api/collection', { cardId: 'base1-25', quantity: 3 }),
-    )
-    expect(second.quantity).toBe(5)
+  it('adicionar a mesma cópia de novo soma a quantidade (upsert)', async () => {
+    const { add, list } = await setup()
+    await add({ cardId: 'base1-25', quantity: 2 })
+    expect((await add({ cardId: 'base1-25', quantity: 3 })).quantity).toBe(5)
+    const body = await list()
+    expect(body.items).toHaveLength(1)
+    expect(body.totals).toEqual({ uniqueCards: 1, totalCards: 5 })
+  })
 
-    const list = await json<CollectionBody>(await client.get('/api/collection'))
-    expect(list.items).toHaveLength(1)
-    expect(list.totals).toEqual({ uniqueCards: 1, totalCards: 5 })
+  it('variante ou condição diferente é outra cópia; uniqueCards conta cartas', async () => {
+    const { add, list } = await setup()
+    await add({ cardId: 'base1-25' })
+    await add({ cardId: 'base1-25', variant: 'reverse' })
+    await add({ cardId: 'base1-25', condition: 'LP', quantity: 2 })
+    const body = await list()
+    expect(body.items).toHaveLength(3)
+    expect(body.totals).toEqual({ uniqueCards: 1, totalCards: 4 })
+  })
+
+  it('rejeita variante em que a carta não foi impressa e condição inválida', async () => {
+    const { client } = await setup()
+    const holo = await client.post('/api/collection', { cardId: 'base1-25', variant: 'holo' })
+    expect(holo.status).toBe(400)
+    expect(await json(holo)).toMatchObject({ error: { code: 'VARIANT_NOT_AVAILABLE' } })
+    const bad = await client.post('/api/collection', { cardId: 'base1-25', condition: 'Mint' })
+    expect(bad.status).toBe(400)
   })
 
   it('não adiciona carta inexistente no TCGdex', async () => {
-    const { client } = await loginAs({ sub: 'google-a', email: 'a@example.com' })
+    const { client } = await setup()
     expect((await client.post('/api/collection', { cardId: 'missing' })).status).toBe(404)
   })
 
+  it('idiomas são coleções separadas', async () => {
+    const { add, list } = await setup()
+    await add({ cardId: 'base1-25', language: 'en', quantity: 2 })
+    expect((await list('pt')).items).toHaveLength(0)
+    expect((await list('en')).items[0]).toMatchObject({ language: 'en', quantity: 2 })
+  })
+
+  it('rejeita idioma não habilitado', async () => {
+    const { client } = await setup()
+    expect((await client.post('/api/collection', { cardId: 'x', language: 'xx' })).status).toBe(400)
+  })
+
   it('define a quantidade exata', async () => {
-    const { client } = await loginAs({ sub: 'google-a', email: 'a@example.com' })
-    await client.post('/api/collection', { cardId: 'base1-25' })
-    const res = await client.patch('/api/collection/base1-25', { quantity: 7 })
+    const { client, add } = await setup()
+    const item = await add({ cardId: 'base1-25' })
+    const res = await client.patch(`/api/collection/${item.id}`, { quantity: 7 })
     expect(res.status).toBe(200)
-    expect((await json<{ quantity: number }>(res)).quantity).toBe(7)
+    expect((await json<ItemBody>(res)).quantity).toBe(7)
   })
 
-  it('rejeita quantidade menor que 1', async () => {
-    const { client } = await loginAs({ sub: 'google-a', email: 'a@example.com' })
-    await client.post('/api/collection', { cardId: 'base1-25' })
-    expect((await client.patch('/api/collection/base1-25', { quantity: 0 })).status).toBe(400)
+  it('rejeita quantidade menor que 1, corpo vazio e id inválido', async () => {
+    const { client, add } = await setup()
+    const item = await add({ cardId: 'base1-25' })
+    expect((await client.patch(`/api/collection/${item.id}`, { quantity: 0 })).status).toBe(400)
+    expect((await client.patch(`/api/collection/${item.id}`, {})).status).toBe(400)
+    expect((await client.patch('/api/collection/base1-25', { quantity: 2 })).status).toBe(400)
   })
 
-  it('PATCH em carta que não está na coleção dá 404', async () => {
-    const { client } = await loginAs({ sub: 'google-a', email: 'a@example.com' })
-    expect((await client.patch('/api/collection/base1-25', { quantity: 2 })).status).toBe(404)
+  it('PATCH em cópia que não existe dá 404', async () => {
+    const { client } = await setup()
+    expect((await client.patch('/api/collection/999', { quantity: 2 })).status).toBe(404)
+  })
+
+  it('muda condição e variante de uma cópia', async () => {
+    const { client, add } = await setup()
+    const item = await add({ cardId: 'base1-25' })
+    const res = await client.patch(`/api/collection/${item.id}`, {
+      condition: 'MP',
+      variant: 'reverse',
+    })
+    expect(res.status).toBe(200)
+    expect(await json(res)).toMatchObject({ id: item.id, condition: 'MP', variant: 'reverse' })
+
+    const holo = await client.patch(`/api/collection/${item.id}`, { variant: 'holo' })
+    expect(holo.status).toBe(400)
+  })
+
+  it('mudar para uma cópia que já existe junta as duas e leva os bolsos junto', async () => {
+    const { client, add, list } = await setup()
+    const nm = await add({ cardId: 'base1-25', quantity: 2 })
+    const lp = await add({ cardId: 'base1-25', condition: 'LP', quantity: 3 })
+    const binder = await json<{ id: string }>(await client.post('/api/binders', { name: 'X' }))
+    await client.put(`/api/binders/${binder.id}/slots/4`, { collectionItemId: lp.id })
+
+    const res = await client.patch(`/api/collection/${lp.id}`, { condition: 'NM' })
+    expect(res.status).toBe(200)
+    expect(await json(res)).toMatchObject({ id: nm.id, quantity: 5, binderCount: 1 })
+
+    const body = await list()
+    expect(body.items).toHaveLength(1)
+    const detail = await json<BinderDetail>(await client.get(`/api/binders/${binder.id}`))
+    expect(detail.slots).toEqual([
+      { position: 4, item: expect.objectContaining({ id: nm.id, condition: 'NM' }) },
+    ])
   })
 
   it('remove da coleção', async () => {
-    const { client } = await loginAs({ sub: 'google-a', email: 'a@example.com' })
-    await client.post('/api/collection', { cardId: 'base1-25' })
-    expect((await client.delete('/api/collection/base1-25')).status).toBe(204)
-    expect((await client.delete('/api/collection/base1-25')).status).toBe(404)
-    const list = await json<CollectionBody>(await client.get('/api/collection'))
-    expect(list.items).toHaveLength(0)
+    const { client, add, list } = await setup()
+    const item = await add({ cardId: 'base1-25' })
+    expect((await client.delete(`/api/collection/${item.id}`)).status).toBe(204)
+    expect((await client.delete(`/api/collection/${item.id}`)).status).toBe(404)
+    expect((await list()).items).toHaveLength(0)
   })
 
   it('cada usuário tem a sua coleção (isolamento)', async () => {
-    const a = (await loginAs({ sub: 'google-a', email: 'a@example.com' })).client
-    const b = (await loginAs({ sub: 'google-b', email: 'b@example.com' })).client
-
-    await a.post('/api/collection', { cardId: 'base1-25', quantity: 2 })
+    const a = await setup('google-a')
+    const b = await setup('google-b')
+    const item = await a.add({ cardId: 'base1-25', quantity: 2 })
 
     // B não vê a carta de A, nem consegue alterá-la ou apagá-la.
-    const listB = await json<CollectionBody>(await b.get('/api/collection'))
-    expect(listB.items).toHaveLength(0)
-    expect((await b.patch('/api/collection/base1-25', { quantity: 9 })).status).toBe(404)
-    expect((await b.delete('/api/collection/base1-25')).status).toBe(404)
+    expect((await b.list()).items).toHaveLength(0)
+    expect((await b.client.patch(`/api/collection/${item.id}`, { quantity: 9 })).status).toBe(404)
+    expect(
+      (await b.client.patch(`/api/collection/${item.id}`, { variant: 'reverse' })).status,
+    ).toBe(404)
+    expect((await b.client.delete(`/api/collection/${item.id}`)).status).toBe(404)
 
     // A segue com a carta intacta.
-    const listA = await json<CollectionBody>(await a.get('/api/collection'))
+    const listA = await a.list()
     expect(listA.items).toHaveLength(1)
     expect(listA.items[0]?.quantity).toBe(2)
   })
 
   it('a mesma carta em duas coleções não se mistura', async () => {
-    const a = (await loginAs({ sub: 'google-a', email: 'a@example.com' })).client
-    const b = (await loginAs({ sub: 'google-b', email: 'b@example.com' })).client
-
-    await a.post('/api/collection', { cardId: 'base1-25', quantity: 2 })
-    await b.post('/api/collection', { cardId: 'base1-25', quantity: 5 })
-
-    const listA = await json<CollectionBody>(await a.get('/api/collection'))
-    const listB = await json<CollectionBody>(await b.get('/api/collection'))
-    expect(listA.items[0]?.quantity).toBe(2)
-    expect(listB.items[0]?.quantity).toBe(5)
+    const a = await setup('google-a')
+    const b = await setup('google-b')
+    await a.add({ cardId: 'base1-25', quantity: 2 })
+    await b.add({ cardId: 'base1-25', quantity: 5 })
+    expect((await a.list()).items[0]?.quantity).toBe(2)
+    expect((await b.list()).items[0]?.quantity).toBe(5)
   })
 })
 
@@ -629,7 +725,7 @@ describe('/api/binders', () => {
     const p = await add('base1-25')
     const binder = await create({ name: 'X' })
     await put(binder.id, 0, p.id)
-    await client.delete('/api/collection/base1-25')
+    await client.delete(`/api/collection/${p.id}`)
     expect((await detail(binder.id)).slots).toEqual([])
   })
 
@@ -680,6 +776,21 @@ describe('/api/binders', () => {
     expect(d.slots.map((s) => [s.position, s.item.cardId, s.item.quantity])).toEqual([
       [2, 'sv09-003', 1],
       [9, 'sv09-010', 2],
+    ])
+  })
+
+  it('com várias cópias da carta, o preenchimento escolhe normal na melhor condição', async () => {
+    const { add, create, detail } = await setup()
+    await add('sv09-003') // normal NM
+    const { client } = await loginAs({ sub: 'google-a', email: 'google-a@example.com' })
+    await client.post('/api/collection', { cardId: 'sv09-001', variant: 'reverse' })
+    await client.post('/api/collection', { cardId: 'sv09-001', condition: 'LP' })
+    await client.post('/api/collection', { cardId: 'sv09-001' })
+    const binder = await create({ name: 'AJ', setId: 'sv09', fill: true })
+    const d = await detail(binder.id)
+    expect(d.slots.map((s) => [s.position, s.item.variant, s.item.condition])).toEqual([
+      [0, 'normal', 'NM'],
+      [2, 'normal', 'NM'],
     ])
   })
 

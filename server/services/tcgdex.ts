@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { CardDetail, CardSearchResponse, SetDetail, SetSummary } from '../../shared/schemas.js'
+import { VARIANTS, type Variant } from '../../shared/copies.js'
 import type { Language } from '../../shared/languages.js'
 import { AppError } from '../errors.js'
 
@@ -39,6 +40,7 @@ const RawCardSchema = RawBriefSchema.extend({
   hp: z.number().optional(),
   types: z.array(z.string()).optional(),
   description: z.string().optional(),
+  variants: z.record(z.string(), z.boolean().nullish()).nullish(),
   set: z.object({
     id: z.string(),
     name: z.string(),
@@ -128,6 +130,12 @@ async function fetchUpstream<S extends z.ZodTypeAny>(
 const imageUrl = (base: string | undefined, quality: 'low' | 'high') =>
   base ? `${base}/${quality}.webp` : null
 
+/** Variantes impressas, na ordem de VARIANTS. Sem informação do TCGdex, assume "normal". */
+function toVariants(raw: Record<string, boolean | null | undefined> | null | undefined): Variant[] {
+  const found = VARIANTS.filter((v) => raw?.[v] === true)
+  return found.length > 0 ? found : ['normal']
+}
+
 const assetUrl = (base: string | undefined) => (base ? `${base}.webp` : null)
 
 const SET_NOT_FOUND = { code: 'SET_NOT_FOUND', message: 'Coleção não encontrada.' }
@@ -177,6 +185,7 @@ export const tcgdex: CardsProvider = {
       hp: c.hp ?? null,
       types: c.types ?? [],
       description: c.description ?? null,
+      variants: toVariants(c.variants),
       set: {
         id: c.set.id,
         name: c.set.name,

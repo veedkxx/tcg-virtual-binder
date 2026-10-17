@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { CONDITIONS, DEFAULT_CONDITION, VARIANTS } from './copies.js'
 import { DEFAULT_LANGUAGE, ENABLED_LANGUAGES } from './languages.js'
 
 export const MAX_QUANTITY = 9999
@@ -9,6 +10,8 @@ export const POCKETS_PER_PAGE = 9
 export const MAX_BINDER_POSITION = 10_000 * POCKETS_PER_PAGE - 1
 
 export const LanguageSchema = z.enum(ENABLED_LANGUAGES)
+export const VariantSchema = z.enum(VARIANTS)
+export const ConditionSchema = z.enum(CONDITIONS)
 
 // ---------- Cartas (TCGdex normalizado) ----------
 
@@ -38,6 +41,8 @@ export const CardDetailSchema = CardSummarySchema.extend({
   hp: z.number().nullable(),
   types: z.array(z.string()),
   description: z.string().nullable(),
+  /** Variantes em que a carta foi impressa (nunca vazio). */
+  variants: z.array(VariantSchema).min(1),
   set: z.object({
     id: z.string(),
     name: z.string(),
@@ -71,6 +76,8 @@ export const CollectionItemSchema = z.object({
   id: z.number().int(),
   cardId: z.string(),
   language: LanguageSchema,
+  variant: VariantSchema,
+  condition: ConditionSchema,
   quantity: z.number().int().min(1),
   name: z.string(),
   imageUrl: z.string().nullable(),
@@ -78,7 +85,7 @@ export const CollectionItemSchema = z.object({
   setName: z.string().nullable(),
   localId: z.string().nullable(),
   rarity: z.string().nullable(),
-  /** Em quantos binders diferentes a carta aparece. */
+  /** Em quantos binders diferentes esta cópia aparece. */
   binderCount: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -160,13 +167,26 @@ export const SearchQuerySchema = LangQuerySchema.extend({
 export const AddToCollectionSchema = z.object({
   cardId: z.string().trim().min(1).max(100),
   language: LanguageSchema.default(DEFAULT_LANGUAGE),
+  /** Sem variante, vale a primeira em que a carta foi impressa. */
+  variant: VariantSchema.optional(),
+  condition: ConditionSchema.default(DEFAULT_CONDITION),
   quantity: QuantitySchema.default(1),
 })
 export type AddToCollectionInput = z.input<typeof AddToCollectionSchema>
 
-export const SetQuantitySchema = z.object({
-  quantity: QuantitySchema,
-})
+export const CollectionItemIdSchema = z.coerce.number().int().positive()
+
+/** Muda quantidade, variante e/ou condição de uma cópia. */
+export const UpdateCollectionItemSchema = z
+  .object({
+    quantity: QuantitySchema.optional(),
+    variant: VariantSchema.optional(),
+    condition: ConditionSchema.optional(),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), {
+    message: 'Informe quantity, variant ou condition.',
+  })
+export type UpdateCollectionItemInput = z.infer<typeof UpdateCollectionItemSchema>
 
 const BinderNameSchema = z.string().trim().min(1).max(60)
 
