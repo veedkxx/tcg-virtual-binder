@@ -8,7 +8,12 @@ import {
 } from '../../shared/schemas.js'
 import { AppError } from '../errors.js'
 import { currentUser } from '../middleware/session.js'
-import { resolveVariant, snapshotOf, type CollectionService } from '../services/collection.js'
+import {
+  detailsOf,
+  resolveVariant,
+  snapshotOf,
+  type CollectionService,
+} from '../services/collection.js'
 import type { CardsProvider } from '../services/tcgdex.js'
 
 const COMPLETE_BATCH = 40
@@ -46,7 +51,7 @@ export function createCollectionRouter(deps: {
       rows.map(async (r) => {
         try {
           const card = await cards.get({ lang: r.language as Language, id: r.cardId })
-          await collection.setDetails(r.id, { category: card.category, types: card.types })
+          await collection.setDetails(r.id, detailsOf(card))
           updated++
         } catch (err) {
           // Carta que o TCGdex não acha mais: marca sem tipos para não tentar de novo. Outros

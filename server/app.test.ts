@@ -35,11 +35,12 @@ const fakeCard = (id: string, language: Language = 'pt'): CardDetail => ({
   language,
   imageUrl: `https://assets.example/${id}/low.webp`,
   imageHighUrl: `https://assets.example/${id}/high.webp`,
-  category: 'Pokémon',
+  // Em inglês o TCGdex devolve os nomes em inglês; a coleção guarda em português.
+  category: language === 'en' ? 'Pokemon' : 'Pokémon',
   rarity: 'Comum',
   illustrator: 'Alguém',
   hp: 60,
-  types: ['Elétrico'],
+  types: language === 'en' ? ['Lightning'] : ['Elétrico'],
   description: null,
   variants: variantsOf(id).all,
   boosterVariants: variantsOf(id).booster,
@@ -1026,9 +1027,13 @@ describe('idiomas misturados (Sprint 6)', () => {
     expect(en.items).toHaveLength(1)
   })
 
-  it('a cópia guarda categoria e tipos da carta', async () => {
+  it('a cópia guarda categoria e tipos da carta, em português em qualquer idioma', async () => {
     const { add } = await setup()
     expect(await add({ cardId: 'base1-25' })).toMatchObject({
+      category: 'Pokémon',
+      types: ['Elétrico'],
+    })
+    expect(await add({ cardId: 'base1-25', language: 'en' })).toMatchObject({
       category: 'Pokémon',
       types: ['Elétrico'],
     })

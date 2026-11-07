@@ -1,4 +1,5 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
+import { categoryInPortuguese, typeInPortuguese } from '../../shared/cardTypes.js'
 import type { Condition, Variant } from '../../shared/copies.js'
 import type { Language } from '../../shared/languages.js'
 import { MAX_QUANTITY } from '../../shared/schemas.js'
@@ -31,8 +32,15 @@ export function snapshotOf(card: CardDetail, language: Language): CardSnapshot {
     setName: card.set.name,
     localId: card.localId,
     rarity: card.rarity,
-    category: card.category,
-    types: card.types,
+    ...detailsOf(card),
+  }
+}
+
+/** Categoria e tipos em português, para o filtro juntar cartas de idiomas diferentes. */
+export function detailsOf(card: CardDetail) {
+  return {
+    category: card.category ? categoryInPortuguese(card.category) : null,
+    types: card.types.map(typeInPortuguese),
   }
 }
 
