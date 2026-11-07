@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import express from 'express'
 import type { Db } from './db/client.js'
+import { migrationStatus } from './db/migrationStatus.js'
 import { AppError } from './errors.js'
 import { errorHandler } from './middleware/error.js'
 import { createSameOrigin } from './middleware/origin.js'
@@ -50,12 +51,19 @@ export function createApp(deps: {
         return { ok: false, ms: Date.now() - started, error: (err as Error).message }
       }
     }
-    const [database, tcgdex] = await Promise.all([
+    const [database, tcgdex, migrations] = await Promise.all([
       check(() => deps.db.run(sql`select 1`)),
       check(() => deps.cards.ping()),
+      // Banco atrasado em relação ao código (migration não aplicada) quebra as rotas da coleção.
+      check(async () => {
+        const s = await migrationStatus(deps.db)
+        if (!s.upToDate) {
+          throw new Error(`${s.applied} de ${s.expected} migrations aplicadas`)
+        }
+      }),
     ])
-    const ok = database.ok && tcgdex.ok
-    res.status(ok ? 200 : 503).json({ ok, checks: { database, tcgdex } })
+    const ok = database.ok && tcgdex.ok && migrations.ok
+    res.status(ok ? 200 : 503).json({ ok, checks: { database, tcgdex, migrations } })
   })
 
   app.use('/api', createSameOrigin(deps.appUrl))

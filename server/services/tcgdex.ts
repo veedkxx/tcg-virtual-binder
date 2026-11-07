@@ -145,7 +145,8 @@ function setIdOf(cardId: string, localId: string) {
  * Preenche `image` das cartas sem imagem com a mesma carta em inglês. Só consulta a tabela de
  * séries quando há alguma carta sem imagem (em inglês não há reserva).
  */
-async function withImageFallback<T extends { id: string; localId: string; image?: string }>(
+// Campos opcionais no tipo: sem strictNullChecks (build da Vercel) o zod infere tudo assim.
+async function withImageFallback<T extends { id?: string; localId?: string; image?: string }>(
   lang: Language,
   cards: T[],
   setId?: string,
@@ -153,7 +154,7 @@ async function withImageFallback<T extends { id: string; localId: string; image?
   if (lang === 'en' || cards.every((c) => c.image)) return cards
   const series = await setSeries()
   return cards.map((c) => {
-    if (c.image) return c
+    if (c.image || !c.id || !c.localId) return c
     const set = setId ?? setIdOf(c.id, c.localId)
     const serie = set ? series.get(set) : undefined
     return serie ? { ...c, image: `${ASSETS_URL}/en/${serie}/${set}/${c.localId}` } : c
