@@ -69,6 +69,9 @@ export const collectionItems = sqliteTable(
     setName: text('set_name'),
     localId: text('local_id'),
     rarity: text('rarity'),
+    category: text('category'),
+    /** null = ainda não completado (cópias de antes da Sprint 6). */
+    types: text('types', { mode: 'json' }).$type<string[]>(),
     createdAt: text('created_at')
       .notNull()
       .default(sql`(CURRENT_TIMESTAMP)`),
