@@ -32,14 +32,14 @@ só inglês). A Scrydex só faz sentido se houver orçamento e se cobrir portugu
 | TCGplayer (oficial) | — | — | fechada para novos desenvolvedores (a confirmar) |
 | PriceCharting | pago | vendas concluídas | sem histórico pela API (a confirmar) |
 | JustTCG, PokéWallet, Pokemon Price Tracker | grátis limitado + pagos | preços e histórico | coberturas divergem entre fontes (a confirmar) |
-| Liga Pokémon (BRL) | — | — | sem API pública encontrada |
+| Liga Pokémon (BRL) | — | — | sem API oficial; só raspadores de terceiros (Apify, pagos por resultado) e o robots.txt do site bloqueia as páginas de histórico de preço |
 
 **Ressalva:** Cardmarket e TCGplayer são mercados da Europa e dos EUA. Carta em português da Copag é
 outro produto no Brasil, com outro preço; nenhuma API encontrada tem preço em reais.
 
-**Recomendação para a Sprint 8:** começar pelos preços do TCGdex (sem custo e já vêm na resposta da
-carta), mostrados como "referência internacional" em EUR/USD com conversão aproximada para BRL.
-Histórico de preços e cartas graduadas ficam para uma avaliação paga depois, se fizer falta.
+**Decisão (novembro de 2026): preço fica em stand-by.** Preço em EUR/USD não interessa por enquanto,
+e não há fonte legítima de preço em reais. Caminhos para depois: um botão "Ver na Liga Pokémon" na
+página da carta (o usuário vê o preço em reais na fonte, sem raspar nada) e pedir acesso oficial à Liga.
 
 ## Fontes
 
@@ -50,3 +50,5 @@ Histórico de preços e cartas graduadas ficam para uma avaliação paga depois,
 - [Pokemon Card API Comparison 2026 (PokeTrace)](https://poketrace.com/blog/pokemon-card-api-comparison)
 - [PokéWallet: comparação com TCGdex e pokemontcg.io](https://pokewallet.io/blog/pokemon-tcg-api-comparison-pokewallet-tcgdex-pokemontcgio)
 - [10 Trading Card Game APIs Compared (tcgapi.dev)](https://tcgapi.dev/blog/trading-card-game-apis-compared/)
+- [Liga Pokémon: robots.txt](https://www.ligapokemon.com.br/robots.txt)
+- [Raspador de preços da Liga Pokémon na Apify (exemplo)](https://apify.com/dami_studio/ligapokemon-card-prices-scraper/api/python)
