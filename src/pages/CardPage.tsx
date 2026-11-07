@@ -2,9 +2,16 @@ import { useState } from 'react'
 import { ArrowLeft, LogIn, Plus } from 'lucide-react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { compareCopies, DEFAULT_CONDITION, type Condition, type Variant } from '../../shared/copies'
+import type { Language } from '../../shared/languages'
 import type { CardDetail, CollectionItem } from '../../shared/schemas'
 import { CardImage } from '@/components/CardImage'
-import { ConditionSelect, VariantPicker, VariantSelect } from '@/components/CopyControls'
+import {
+  ConditionSelect,
+  CopyLanguageSelect,
+  LanguageBadge,
+  VariantPicker,
+  VariantSelect,
+} from '@/components/CopyControls'
 import { QuantityStepper } from '@/components/QuantityStepper'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -28,7 +35,13 @@ export function CardPage() {
   const collection = useCollection()
   const language = useUiStore((s) => s.language)
 
-  const copies = (collection.data?.items ?? []).filter((i) => i.cardId === id).sort(compareCopies)
+  // Cópias da carta em todos os idiomas; as do idioma escolhido primeiro.
+  const copies = (collection.data?.items ?? [])
+    .filter((i) => i.cardId === id)
+    .sort(
+      (a, b) =>
+        Number(a.language !== language) - Number(b.language !== language) || compareCopies(a, b),
+    )
   const total = copies.reduce((sum, i) => sum + i.quantity, 0)
 
   const back = (
@@ -149,6 +162,7 @@ function CopyRow({ item, variants }: { item: CollectionItem; variants: Variant[]
 
   return (
     <li className="flex flex-wrap items-center gap-2 p-3">
+      <LanguageBadge language={item.language} />
       <VariantSelect
         options={variants}
         value={item.variant}
@@ -193,6 +207,8 @@ function AddCopyForm({
   const setPendingQuantity = useUiStore((s) => s.setPendingQuantity)
   const [variant, setVariant] = useState<Variant>(card.variants[0]!)
   const [condition, setCondition] = useState<Condition>(DEFAULT_CONDITION)
+  // Dá para registrar a carta em outro idioma (mesmo id de carta nos idiomas europeus).
+  const [language, setLanguage] = useState<Language>(card.language)
 
   return (
     <div className="space-y-3">
@@ -201,13 +217,14 @@ function AddCopyForm({
         <VariantPicker options={card.variants} value={variant} onChange={setVariant} />
       )}
       <div className="flex flex-wrap items-center gap-3">
+        <CopyLanguageSelect value={language} onChange={setLanguage} />
         <ConditionSelect value={condition} onChange={setCondition} />
         <QuantityStepper value={pendingQuantity} onChange={setPendingQuantity} />
         <Button
           disabled={add.isPending || disabled}
           onClick={() =>
             add.mutate(
-              { cardId: card.id, quantity: pendingQuantity, variant, condition },
+              { cardId: card.id, quantity: pendingQuantity, variant, condition, language },
               { onSuccess: () => setPendingQuantity(1) },
             )
           }

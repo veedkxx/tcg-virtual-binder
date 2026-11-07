@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { ArrowLeft, ChevronLeft, ChevronRight, Pencil, Sparkles, Trash2 } from 'lucide-react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { compareCopies, type Variant } from '../../shared/copies'
+import type { Language } from '../../shared/languages'
 import { SET_TYPE_LABELS } from '../../shared/setTypes'
 import { POCKETS_PER_PAGE, type BinderDetail, type CollectionItem } from '../../shared/schemas'
 import { Pocket, type PocketState } from '@/components/binder/Pocket'
@@ -179,7 +180,11 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
   // (normal NM primeiro) vai para o bolso com um toque; o total aparece no selo.
   const ownedByKey = useMemo(() => {
     const owned = new Map<string, { best: CollectionItem; total: number; copies: number }>()
-    for (const i of [...(collection.data?.items ?? [])].sort(compareCopies)) {
+    // Cópias no idioma do binder primeiro: são as que entram com um toque.
+    const sameLanguageFirst = (a: CollectionItem, b: CollectionItem) =>
+      Number(a.language !== binder.language) - Number(b.language !== binder.language)
+    const items = [...(collection.data?.items ?? [])]
+    for (const i of items.sort((a, b) => sameLanguageFirst(a, b) || compareCopies(a, b))) {
       for (const key of [i.cardId, `${i.cardId}|${i.variant}`]) {
         const o = owned.get(key)
         if (o) {
@@ -189,7 +194,23 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
       }
     }
     return owned
-  }, [collection.data])
+  }, [collection.data, binder.language])
+
+  // Filtros de visualização: apagam os bolsos que não batem (a ordem das páginas não muda).
+  const [show, setShow] = useState<'all' | 'owned' | 'missing'>('all')
+  const [langFilter, setLangFilter] = useState<Language | ''>('')
+  const slotLanguages = useMemo(
+    () => [...new Set(binder.slots.map((s) => s.item.language))].sort(),
+    [binder.slots],
+  )
+  const dimmed = (state: PocketState) => {
+    if (state.kind === 'none') return false
+    const filled = state.kind === 'filled'
+    if (show === 'owned' && !filled) return true
+    if (show === 'missing' && filled) return true
+    if (langFilter && (!filled || state.item.language !== langFilter)) return true
+    return false
+  }
   const ownedFor = (card: { id: string; variant?: Variant }) =>
     ownedByKey.get(card.variant ? `${card.id}|${card.variant}` : card.id)
 
@@ -275,6 +296,34 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
         </div>
       ) : null}
 
+      {(binder.template || slotLanguages.length > 1) && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+          {binder.template && (
+            <ChipGroup
+              label="Mostrar"
+              value={show}
+              onChange={setShow}
+              options={[
+                { value: 'all', label: 'Todas' },
+                { value: 'owned', label: `Tenho (${binder.filled})` },
+                { value: 'missing', label: `Faltam (${(total ?? 0) - binder.filled})` },
+              ]}
+            />
+          )}
+          {slotLanguages.length > 1 && (
+            <ChipGroup
+              label="Idioma"
+              value={langFilter}
+              onChange={setLangFilter}
+              options={[
+                { value: '', label: 'Todos' },
+                ...slotLanguages.map((l) => ({ value: l, label: l.toUpperCase() })),
+              ]}
+            />
+          )}
+        </div>
+      )}
+
       <div
         className="touch-pan-y select-none"
         onPointerDown={onPointerDown}
@@ -303,6 +352,8 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
                       <Pocket
                         key={position}
                         state={pocketState(position)}
+                        binderLanguage={binder.language}
+                        dimmed={dimmed(pocketState(position))}
                         onClick={() => onPocketClick(position)}
                         onQuickAdd={() => addNew.mutate({ position })}
                         busy={addNew.isPending && addNew.variables?.position === position}
@@ -401,6 +452,7 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
           addNew.mutate({ position, input }, { onSuccess: () => setZoom(null) })
         }
         adding={addNew.isPending}
+        binderLanguage={binder.language}
       />
     </div>
   )
@@ -486,5 +538,34 @@ function DeleteButton({ binder }: { binder: BinderDetail }) {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  )
+}
+
+function ChipGroup<T extends string>(props: {
+  label: string
+  value: T
+  onChange: (v: T) => void
+  options: { value: T; label: string }[]
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label={props.label}>
+      <span className="text-xs text-muted-foreground">{props.label}</span>
+      {props.options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={props.value === o.value}
+          onClick={() => props.onChange(o.value)}
+          className={cn(
+            'rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
+            props.value === o.value &&
+              'border-primary bg-primary text-primary-foreground hover:bg-primary/90',
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
   )
 }

@@ -22,14 +22,16 @@ export function SearchPage() {
   const search = useCardSearch(debounced, page)
   const collection = useCollection()
 
-  // Soma todas as cópias (variantes e condições) da carta.
+  // Soma todas as cópias (variantes e condições) da carta no idioma da busca.
+  const language = useUiStore((s) => s.language)
   const ownedById = useMemo(() => {
     const owned = new Map<string, number>()
     for (const i of collection.data?.items ?? []) {
+      if (i.language !== language) continue
       owned.set(i.cardId, (owned.get(i.cardId) ?? 0) + i.quantity)
     }
     return owned
-  }, [collection.data])
+  }, [collection.data, language])
 
   return (
     <div className="space-y-6">

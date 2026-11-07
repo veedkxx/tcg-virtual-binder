@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect } from 'react'
+import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { Condition, Variant } from '../../shared/copies'
 import type { Language } from '../../shared/languages'
@@ -10,18 +11,37 @@ import { useUiStore } from '@/store/ui'
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : 'Algo deu errado.')
 
 // O id do usuário faz parte da chave: trocar de conta nunca mostra a coleção da anterior.
-const collectionKey = (userId: string | undefined, language: Language) =>
-  ['collection', userId, language] as const
+const collectionKey = (userId: string | undefined) => ['collection', userId] as const
 
-/** Coleção do usuário logado. Sem login a consulta fica desligada (data = undefined). */
+/**
+ * Coleção do usuário logado, em todos os idiomas. Sem login a consulta fica desligada.
+ * Cópias antigas sem tipo (de antes da Sprint 6) são completadas no servidor aos poucos.
+ */
 export function useCollection() {
-  const language = useUiStore((s) => s.language)
   const { user } = useAuth()
-  return useQuery({
-    queryKey: collectionKey(user?.id, language),
-    queryFn: () => api.getCollection(language),
+  const qc = useQueryClient()
+  const query = useQuery({
+    queryKey: collectionKey(user?.id),
+    queryFn: () => api.getCollection(),
     enabled: Boolean(user),
   })
+
+  const incomplete = query.data?.items.some((i) => i.types === null) ?? false
+  // Vários componentes usam a coleção ao mesmo tempo: só um completa por vez.
+  const completing = useIsMutating({ mutationKey: ['collection', 'complete'] }) > 0
+  const complete = useMutation({
+    mutationKey: ['collection', 'complete'],
+    mutationFn: api.completeCollection,
+    onSuccess: ({ updated, more }) => {
+      if (updated > 0 || more) void qc.invalidateQueries({ queryKey: collectionKey(user?.id) })
+    },
+  })
+  useEffect(() => {
+    // Uma chamada por vez; se der erro, tenta de novo na próxima vez que a coleção carregar.
+    if (incomplete && !completing && !complete.isError) complete.mutate()
+  }, [incomplete, completing, complete])
+
+  return query
 }
 
 function useInvalidateCollection() {
@@ -38,12 +58,17 @@ export function useAddToCollection() {
   const invalidate = useInvalidateCollection()
 
   return useMutation({
-    mutationFn: (input: {
+    mutationFn: ({
+      language: chosen,
+      ...input
+    }: {
       cardId: string
       quantity: number
       variant: Variant
       condition: Condition
-    }) => api.addToCollection({ ...input, language }),
+      /** Sem idioma, vale o do seletor do cabeçalho. */
+      language?: Language
+    }) => api.addToCollection({ ...input, language: chosen ?? language }),
     onSuccess: (item) => {
       toast.success(`${item.name} adicionada (agora você tem ${item.quantity} desta cópia).`)
     },
@@ -58,9 +83,8 @@ export function useAddToCollection() {
  */
 export function useUpdateCollectionItem() {
   const qc = useQueryClient()
-  const language = useUiStore((s) => s.language)
   const { user } = useAuth()
-  const key = collectionKey(user?.id, language)
+  const key = collectionKey(user?.id)
   const invalidate = useInvalidateCollection()
 
   return useMutation({

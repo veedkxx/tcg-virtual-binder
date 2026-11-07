@@ -9,14 +9,9 @@
 | 3. Binders | Binders em branco ou de uma coleção, páginas 3x3, zoom; health check, cache do TCGdex, smoke test |
 | 4. Coleção completa | Variantes e condição, português e inglês, Core Set e Master Set, adicionar direto no bolso |
 | 5. Desempenho | Função em São Paulo junto do banco, imagens pela CDN com reserva em inglês, bundle menor, migrations no deploy, CI |
+| 6. Filtros e idiomas | Filtros na coleção e nos binders, binders com idiomas misturados, es/fr/de/it |
 
 ## Próximas sprints
-
-### Sprint 6: filtros e idiomas
-
-- Filtros na coleção e nos binders: coleção, raridade, tipo, variante, condição, idioma, tenho/faltam.
-- Binders com cartas de idiomas diferentes, com filtro por idioma.
-- Mais idiomas (es, fr, de, it, ja…).
 
 ### Sprint 7: binders, organização e lista de desejos
 

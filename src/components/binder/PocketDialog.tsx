@@ -7,8 +7,14 @@ import {
   type Condition,
   type Variant,
 } from '../../../shared/copies'
+import type { Language } from '../../../shared/languages'
 import type { AddToPocketInput, BinderTemplateCard, CollectionItem } from '../../../shared/schemas'
-import { ConditionSelect, CopyBadges, VariantPicker } from '@/components/CopyControls'
+import {
+  ConditionSelect,
+  CopyBadges,
+  CopyLanguageSelect,
+  VariantPicker,
+} from '@/components/CopyControls'
 import { QuantityStepper } from '@/components/QuantityStepper'
 import { TiltCard, highResUrl } from '@/components/TiltCard'
 import { Button } from '@/components/ui/button'
@@ -38,6 +44,8 @@ interface Props {
   /** Carta que falta: adiciona à coleção e já coloca no bolso. */
   onAddMissing: (position: number, input: AddToPocketInput) => void
   adding: boolean
+  /** Idioma padrão da carta que falta (o do binder). */
+  binderLanguage: Language
 }
 
 /** Zoom da carta do bolso, com a carta inclinando no ponteiro. */
@@ -49,6 +57,7 @@ export function PocketDialog({
   onRemove,
   onAddMissing,
   adding,
+  binderLanguage,
 }: Props) {
   const open = target !== null
 
@@ -79,6 +88,7 @@ export function PocketDialog({
                   card={target.card}
                   where={label(target.position)}
                   adding={adding}
+                  binderLanguage={binderLanguage}
                   onAdd={(input) => onAddMissing(target.position, input)}
                 />
               )}
@@ -168,12 +178,15 @@ function MissingInfo({
   where,
   adding,
   onAdd,
+  binderLanguage,
 }: {
   card: BinderTemplateCard
   where: string
   adding: boolean
   onAdd: (input: AddToPocketInput) => void
+  binderLanguage: Language
 }) {
+  const [language, setLanguage] = useState<Language>(binderLanguage)
   // As variantes não ficam no molde do binder: vêm do detalhe da carta (cacheado).
   const detail = useCard(card.id)
   const [variant, setVariant] = useState<Variant | undefined>()
@@ -199,6 +212,7 @@ function MissingInfo({
         chosen && <VariantPicker options={variants} value={chosen} onChange={setVariant} />
       )}
       <div className="flex flex-wrap items-center gap-2">
+        <CopyLanguageSelect value={language} onChange={setLanguage} />
         <ConditionSelect value={condition} onChange={setCondition} />
         <QuantityStepper value={quantity} onChange={setQuantity} />
       </div>
@@ -206,7 +220,7 @@ function MissingInfo({
         <Button
           disabled={adding || detail.isPending}
           onClick={() =>
-            onAdd({ variant: detail.isError ? undefined : chosen, condition, quantity })
+            onAdd({ variant: detail.isError ? undefined : chosen, condition, quantity, language })
           }
         >
           <Plus /> Adicionar ao binder
