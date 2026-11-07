@@ -16,7 +16,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      # A Vercel compila a API sem modo estrito; um erro só desse modo já quebrou um deploy.
       - name: typecheck da API como na Vercel
         run: npx tsc -p tsconfig.server.json --noEmit --strict false
       - run: npm run lint

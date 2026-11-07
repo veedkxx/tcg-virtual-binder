@@ -7,16 +7,10 @@ interface Props {
   src: string | null
   alt: string
   className?: string
-  /** Imagem acima da dobra: carrega já, sem lazy. */
   eager?: boolean
 }
 
-/**
- * Proporção de carta (63x88mm). Se a imagem falha, tenta a mesma carta em inglês e, por fim,
- * mostra o placeholder "Sem imagem".
- */
 export function CardImage({ src, alt, className, eager = false }: Props) {
-  // Recomeça as tentativas quando a carta muda.
   const [attempt, setAttempt] = useState({ src, step: 0 })
   if (attempt.src !== src) setAttempt({ src, step: 0 })
 
