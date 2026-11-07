@@ -242,6 +242,11 @@ describe('/api/health', () => {
     expect(await json(res)).toEqual({ ok: true })
   })
 
+  it('respostas da API trazem o tempo no Server-Timing', async () => {
+    const res = await new Client().get('/api/health')
+    expect(res.headers.get('server-timing')).toMatch(/^app;dur=\d+(\.\d)?$/)
+  })
+
   it('deep=1 testa banco e TCGdex', async () => {
     const res = await new Client().get('/api/health?deep=1')
     expect(res.status).toBe(200)

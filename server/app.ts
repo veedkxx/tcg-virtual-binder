@@ -34,6 +34,17 @@ export function createApp(deps: {
   const app = express()
   app.disable('x-powered-by')
 
+  // Tempo de cada resposta da API (aparece no DevTools, aba Network → Timing).
+  app.use('/api', (_req, res, next) => {
+    const started = performance.now()
+    const writeHead = res.writeHead.bind(res)
+    res.writeHead = ((...args: Parameters<typeof res.writeHead>) => {
+      res.setHeader('Server-Timing', `app;dur=${(performance.now() - started).toFixed(1)}`)
+      return writeHead(...args)
+    }) as typeof res.writeHead
+    next()
+  })
+
   // Leve por padrão; `?deep=1` também testa o banco e o TCGdex (usado pelo smoke test).
   app.get('/api/health', async (req, res) => {
     res.set('Cache-Control', 'no-store')
