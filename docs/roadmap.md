@@ -8,17 +8,9 @@
 | 2. Login | Login com Google, coleção por usuário, proteção de origem |
 | 3. Binders | Binders em branco ou de uma coleção, páginas 3x3, zoom; health check, cache do TCGdex, smoke test |
 | 4. Coleção completa | Variantes e condição, português e inglês, Core Set e Master Set, adicionar direto no bolso |
+| 5. Desempenho | Função em São Paulo junto do banco, imagens pela CDN com reserva em inglês, bundle menor, migrations no deploy, CI |
 
 ## Próximas sprints
-
-### Sprint 5: desempenho e fontes de dados
-
-- Lentidão e otimização: cache persistente do TCGdex (Turso), pré-carregamento, code-splitting,
-  medição de tempo por rota.
-- Imagens: usar a de outro idioma quando faltar; tentar de novo quando falhar.
-- Pesquisa de outras APIs de cartas (responsividade, imagens, idiomas, limites, termos de uso).
-- Pesquisa de API de preços (fonte, moeda, atualização, custo, cobertura em português).
-- Migrations aplicadas no deploy; CI com testes a cada PR.
 
 ### Sprint 6: filtros e idiomas
 
