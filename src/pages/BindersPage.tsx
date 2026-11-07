@@ -7,6 +7,7 @@ import { CreateBinderDialog } from '@/components/CreateBinderDialog'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useBinders } from '@/hooks/useBinders'
+import { proxied } from '@/lib/images'
 
 export function BindersPage() {
   const binders = useBinders()
@@ -76,7 +77,11 @@ function BinderCover({ binder }: { binder: BinderSummary }) {
       <div className="flex items-start gap-3">
         <div className="flex h-12 w-20 shrink-0 items-center justify-center rounded-md bg-muted">
           {binder.set?.logoUrl ? (
-            <img src={binder.set.logoUrl} alt="" className="max-h-10 max-w-18 object-contain" />
+            <img
+              src={proxied(binder.set.logoUrl)!}
+              alt=""
+              className="max-h-10 max-w-18 object-contain"
+            />
           ) : (
             <BookOpen className="size-5 text-muted-foreground" />
           )}

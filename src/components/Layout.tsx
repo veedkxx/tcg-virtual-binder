@@ -1,10 +1,12 @@
 import { BookOpen, Library, LogIn, LogOut, Search } from 'lucide-react'
+import { Suspense } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import type { User } from '../../shared/schemas'
 import { LanguageSelect } from '@/components/LanguageSelect'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { loginUrl, useAuth, useLogout } from '@/hooks/useAuth'
 import { useCollection } from '@/hooks/useCollection'
 import { cn } from '@/lib/utils'
@@ -101,7 +103,9 @@ export function Layout() {
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-6">
-        <Outlet />
+        <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   )

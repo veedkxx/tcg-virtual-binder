@@ -33,11 +33,12 @@
   capa e cor.
 - Lista de desejos.
 
-### Sprint 8: preços e estatísticas
+### Sprint 8: estatísticas e dados
 
-- Preços com a API escolhida na Sprint 5: carta, coleção e binder.
 - Estatísticas da coleção.
 - Importar e exportar CSV.
+- Preços: **em stand-by** (sem fonte legítima em reais; EUR/USD não interessa por enquanto). Opção
+  simples: botão "Ver na Liga Pokémon" na página da carta. Ver `docs/pesquisa-apis.md`.
 
 ### Sprint 9: scanner
 

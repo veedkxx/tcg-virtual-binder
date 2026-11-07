@@ -113,6 +113,14 @@ const google: GoogleProvider = {
   },
 }
 
+// Imagens falsas: "missing" no caminho = 404; "down" = erro 500.
+const fetchImage = (async (input: string | URL | Request) => {
+  const url = String(input)
+  if (url.includes('missing')) return new Response('', { status: 404 })
+  if (url.includes('down')) return new Response('', { status: 500 })
+  return new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/webp' } })
+}) as typeof fetch
+
 // Arquivo temporário (e não ":memory:"): o cliente libsql pode abrir uma conexão nova
 // após transações, o que descartaria um banco em memória.
 const dbFile = join(tmpdir(), `tcg-binder-test-${process.pid}.db`)
@@ -198,7 +206,7 @@ function rawPost(path: string, headers: Record<string, string>) {
 
 beforeAll(async () => {
   await migrate(db, { migrationsFolder: './drizzle' })
-  server = createApp({ db, cards, google, appUrl: 'http://localhost' }).listen(0)
+  server = createApp({ db, cards, google, appUrl: 'http://localhost', fetchImage }).listen(0)
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 })
 
@@ -234,6 +242,11 @@ describe('/api/health', () => {
     expect(await json(res)).toEqual({ ok: true })
   })
 
+  it('respostas da API trazem o tempo no Server-Timing', async () => {
+    const res = await new Client().get('/api/health')
+    expect(res.headers.get('server-timing')).toMatch(/^app;dur=\d+(\.\d)?$/)
+  })
+
   it('deep=1 testa banco e TCGdex', async () => {
     const res = await new Client().get('/api/health?deep=1')
     expect(res.status).toBe(200)
@@ -254,6 +267,41 @@ describe('/api/health', () => {
       })
     } finally {
       tcgdexUp = true
+    }
+  })
+})
+
+describe('/api/img', () => {
+  const img = (src: string) => new Client().get(`/api/img?src=${encodeURIComponent(src)}`)
+
+  it('repassa imagens do TCGdex com cache longo', async () => {
+    const res = await img('https://assets.tcgdex.net/pt/sv/sv09/001/low.webp')
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('image/webp')
+    expect(res.headers.get('cache-control')).toContain('s-maxage=31536000')
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]))
+  })
+
+  it('imagem que não existe: 404 cacheado por menos tempo', async () => {
+    const res = await img('https://assets.tcgdex.net/en/sv/sv09/missing/low.webp')
+    expect(res.status).toBe(404)
+    expect(res.headers.get('cache-control')).toContain('s-maxage=86400')
+  })
+
+  it('erro do TCGdex: 502 sem cache', async () => {
+    const res = await img('https://assets.tcgdex.net/en/sv/down/001/low.webp')
+    expect(res.status).toBe(502)
+    expect(res.headers.get('cache-control')).toBe('no-store')
+  })
+
+  it('não é um proxy aberto', async () => {
+    for (const src of [
+      'https://evil.example/x.webp',
+      'http://assets.tcgdex.net/pt/sv/sv09/001/low.webp',
+      'https://assets.tcgdex.net.evil.example/a/b.webp',
+      'https://assets.tcgdex.net/pt/../../etc/passwd',
+    ]) {
+      expect((await img(src)).status).toBe(400)
     }
   })
 })
