@@ -9,6 +9,7 @@ import { createAuthRouter } from './routes/auth.js'
 import { createBindersRouter } from './routes/binders.js'
 import { createCardsRouter } from './routes/cards.js'
 import { createCollectionRouter } from './routes/collection.js'
+import { createImagesRouter } from './routes/images.js'
 import { createSetsRouter } from './routes/sets.js'
 import { createAuthService } from './services/auth.js'
 import { createBindersService } from './services/binders.js'
@@ -22,6 +23,8 @@ export function createApp(deps: {
   google: GoogleProvider
   /** URL pública do app; https:// liga o atributo Secure dos cookies. */
   appUrl: string
+  /** Só para testes: substitui o fetch das imagens. */
+  fetchImage?: typeof fetch
 }) {
   const secure = deps.appUrl.startsWith('https://')
   const auth = createAuthService(deps.db)
@@ -61,6 +64,7 @@ export function createApp(deps: {
   // Catálogo é público; autenticação e coleção passam pelo middleware de sessão.
   app.use('/api/cards', createCardsRouter(deps.cards))
   app.use('/api/sets', createSetsRouter(deps.cards))
+  app.use('/api/img', createImagesRouter(deps.fetchImage))
   app.use('/api/auth', session, createAuthRouter({ auth, google: deps.google, secure }))
   app.use(
     '/api/collection',

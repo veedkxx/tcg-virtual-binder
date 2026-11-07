@@ -87,6 +87,77 @@ function remember(url: string, data: unknown) {
 /** Só para testes. */
 export function clearTcgdexCache() {
   cache.clear()
+  seriesBySet = null
+}
+
+// ---------- Imagem de reserva (inglês) ----------
+//
+// Cerca de 40% das cartas em português vêm sem imagem; muitas têm imagem em inglês. A URL das
+// imagens é assets.tcgdex.net/{idioma}/{série}/{coleção}/{número}, e a série de cada coleção vem
+// de uma única consulta GraphQL (todas as coleções), guardada por um dia.
+
+const ASSETS_URL = 'https://assets.tcgdex.net'
+const SERIES_TTL_MS = 24 * 60 * 60_000
+
+let seriesBySet: { at: number; map: Map<string, string> } | null = null
+let seriesPending: Promise<Map<string, string>> | null = null
+
+const SeriesResponseSchema = z.object({
+  data: z.object({
+    sets: z.array(z.object({ id: z.string(), serie: z.object({ id: z.string() }).nullish() })),
+  }),
+})
+
+function setSeries(): Promise<Map<string, string>> {
+  if (seriesBySet && Date.now() - seriesBySet.at < SERIES_TTL_MS) {
+    return Promise.resolve(seriesBySet.map)
+  }
+  seriesPending ??= (async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/graphql`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query: '{ sets { id serie { id } } }' }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      })
+      const parsed = SeriesResponseSchema.parse(await res.json())
+      const map = new Map(
+        parsed.data.sets.flatMap((s) => (s.serie ? [[s.id, s.serie.id] as const] : [])),
+      )
+      seriesBySet = { at: Date.now(), map }
+      return map
+    } catch {
+      // Sem a tabela, só não há reserva: a carta aparece "Sem imagem", como antes.
+      return seriesBySet?.map ?? new Map<string, string>()
+    } finally {
+      seriesPending = null
+    }
+  })()
+  return seriesPending
+}
+
+/** Id da coleção a partir do id da carta ("sv03.5-001" → "sv03.5"). */
+function setIdOf(cardId: string, localId: string) {
+  return cardId.endsWith(`-${localId}`) ? cardId.slice(0, -localId.length - 1) : null
+}
+
+/**
+ * Preenche `image` das cartas sem imagem com a mesma carta em inglês. Só consulta a tabela de
+ * séries quando há alguma carta sem imagem (em inglês não há reserva).
+ */
+async function withImageFallback<T extends { id: string; localId: string; image?: string }>(
+  lang: Language,
+  cards: T[],
+  setId?: string,
+): Promise<T[]> {
+  if (lang === 'en' || cards.every((c) => c.image)) return cards
+  const series = await setSeries()
+  return cards.map((c) => {
+    if (c.image) return c
+    const set = setId ?? setIdOf(c.id, c.localId)
+    const serie = set ? series.get(set) : undefined
+    return serie ? { ...c, image: `${ASSETS_URL}/en/${serie}/${set}/${c.localId}` } : c
+  })
 }
 
 async function tcgdexFetch<S extends z.ZodTypeAny>(
@@ -183,7 +254,10 @@ export const tcgdex: CardsProvider = {
   async search({ lang, q, page, pageSize }) {
     // Chaves do filtro de paginação do TCGdex contêm ":" e vão sem encode.
     const query = `name=${encodeURIComponent(q)}&pagination:page=${page}&pagination:itemsPerPage=${pageSize}`
-    const raw = await tcgdexFetch(`/${lang}/cards`, query, z.array(RawBriefSchema))
+    const raw = await withImageFallback(
+      lang,
+      await tcgdexFetch(`/${lang}/cards`, query, z.array(RawBriefSchema)),
+    )
 
     return {
       items: raw.map((c) => ({
@@ -199,7 +273,8 @@ export const tcgdex: CardsProvider = {
   },
 
   async get({ lang, id }) {
-    const c = await tcgdexFetch(`/${lang}/cards/${encodeURIComponent(id)}`, '', RawCardSchema)
+    const raw = await tcgdexFetch(`/${lang}/cards/${encodeURIComponent(id)}`, '', RawCardSchema)
+    const [c] = (await withImageFallback(lang, [raw], raw.set.id)) as [typeof raw]
 
     return {
       id: c.id,
@@ -238,9 +313,10 @@ export const tcgdex: CardsProvider = {
       RawSetSchema,
       SET_NOT_FOUND,
     )
+    const cards = await withImageFallback(lang, s.cards, s.id)
     return {
       ...toSetSummary(s),
-      cards: s.cards.map((c) => ({
+      cards: cards.map((c) => ({
         id: c.id,
         localId: c.localId,
         name: c.name,

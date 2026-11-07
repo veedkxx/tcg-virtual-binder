@@ -19,6 +19,20 @@ const rawSet = {
 
 const fetchMock = vi.fn<typeof fetch>()
 const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200 })
+/** Chamadas de carta/coleção (sem a consulta GraphQL das séries, usada na imagem de reserva). */
+const restCalls = () => fetchMock.mock.calls.filter(([url]) => !String(url).endsWith('/graphql'))
+
+const seriesResponse = ok({
+  data: {
+    sets: [
+      { id: 'sv09', serie: { id: 'sv' } },
+      { id: 'base1', serie: { id: 'base' } },
+    ],
+  },
+})
+/** Responde a consulta de séries e delega o resto para `rest`. */
+const route = (rest: (url: string) => Response) => (input: string | URL | Request) =>
+  Promise.resolve(String(input).endsWith('/graphql') ? seriesResponse.clone() : rest(String(input)))
 
 beforeEach(() => {
   clearTcgdexCache()
@@ -97,6 +111,67 @@ describe('tcgdex', () => {
     expect(card.boosterVariants).toEqual(['normal', 'reverse'])
   })
 
+  it('carta sem imagem em português usa a mesma carta em inglês', async () => {
+    fetchMock.mockImplementation(
+      route(() =>
+        ok([
+          {
+            id: 'sv09-001',
+            localId: '001',
+            name: 'Caterpie',
+            image: 'https://assets.tcgdex.net/pt/sv/sv09/001',
+          },
+          { id: 'sv09-002', localId: '002', name: 'Metapod' },
+          { id: 'xx9-1', localId: '1', name: 'Sem série conhecida' },
+        ]),
+      ),
+    )
+    const res = await tcgdex.search({ lang: 'pt', q: 'x', page: 1, pageSize: 20 })
+    expect(res.items.map((c) => c.imageUrl)).toEqual([
+      'https://assets.tcgdex.net/pt/sv/sv09/001/low.webp',
+      'https://assets.tcgdex.net/en/sv/sv09/002/low.webp',
+      null,
+    ])
+  })
+
+  it('sem cartas faltando imagem (ou em inglês) não consulta as séries', async () => {
+    fetchMock.mockImplementation(
+      route(() => ok([{ id: 'sv09-002', localId: '002', name: 'Metapod' }])),
+    )
+    await tcgdex.search({ lang: 'en', q: 'x', page: 1, pageSize: 20 })
+    fetchMock.mockImplementation(
+      route(() =>
+        ok([
+          {
+            id: 'sv09-001',
+            localId: '001',
+            name: 'C',
+            image: 'https://assets.tcgdex.net/pt/sv/sv09/001',
+          },
+        ]),
+      ),
+    )
+    await tcgdex.search({ lang: 'pt', q: 'y', page: 1, pageSize: 20 })
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/graphql'))).toBe(false)
+  })
+
+  it('a tabela de séries é buscada uma vez e reaproveitada', async () => {
+    fetchMock.mockImplementation(route(() => ok([{ id: 'sv09-002', localId: '002', name: 'M' }])))
+    await tcgdex.search({ lang: 'pt', q: 'a', page: 1, pageSize: 20 })
+    await tcgdex.search({ lang: 'pt', q: 'b', page: 1, pageSize: 20 })
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/graphql'))).toHaveLength(1)
+  })
+
+  it('se a consulta de séries falhar, a carta fica sem imagem (sem erro)', async () => {
+    fetchMock.mockImplementation((input) =>
+      String(input).endsWith('/graphql')
+        ? Promise.reject(new Error('fora do ar'))
+        : Promise.resolve(ok([{ id: 'sv09-002', localId: '002', name: 'M' }])),
+    )
+    const res = await tcgdex.search({ lang: 'pt', q: 'x', page: 1, pageSize: 20 })
+    expect(res.items[0]?.imageUrl).toBeNull()
+  })
+
   it('lista coleções da mais nova para a mais antiga', async () => {
     fetchMock.mockResolvedValueOnce(
       ok([
@@ -112,7 +187,7 @@ describe('tcgdex', () => {
     fetchMock.mockResolvedValueOnce(ok(rawSet))
     await tcgdex.getSet({ lang: 'pt', id: 'sv09' })
     await tcgdex.getSet({ lang: 'pt', id: 'sv09' })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(restCalls()).toHaveLength(1)
   })
 
   it('depois do TTL busca de novo', async () => {
@@ -121,7 +196,7 @@ describe('tcgdex', () => {
     vi.setSystemTime(Date.now() + 61 * 60_000)
     fetchMock.mockResolvedValueOnce(ok(rawSet))
     await tcgdex.getSet({ lang: 'pt', id: 'sv09' })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(restCalls()).toHaveLength(2)
   })
 
   it('TCGdex fora do ar: serve a última resposta boa (stale)', async () => {
@@ -152,7 +227,7 @@ describe('tcgdex', () => {
     })
     fetchMock.mockResolvedValueOnce(new Response('', { status: 404 }))
     await expect(tcgdex.getSet({ lang: 'pt', id: 'nada' })).rejects.toMatchObject({ status: 404 })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(restCalls()).toHaveLength(2)
   })
 
   it('ping ignora o cache e falha se o TCGdex não responde 200', async () => {

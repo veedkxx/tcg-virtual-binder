@@ -20,6 +20,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useCreateBinder, useSets } from '@/hooks/useBinders'
+import { proxied } from '@/lib/images'
 import { cn } from '@/lib/utils'
 
 type Mode = 'blank' | 'set'
@@ -280,7 +281,7 @@ function SetPicker(props: { selected: SetSummary | null; onSelect: (s: SetSummar
                 <span className="flex h-8 w-16 shrink-0 items-center justify-center">
                   {s.logoUrl || s.symbolUrl ? (
                     <img
-                      src={(s.logoUrl ?? s.symbolUrl)!}
+                      src={proxied(s.logoUrl ?? s.symbolUrl)!}
                       alt=""
                       loading="lazy"
                       className="max-h-8 max-w-16 object-contain"

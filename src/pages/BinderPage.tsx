@@ -36,6 +36,7 @@ import {
   useSlotMutations,
 } from '@/hooks/useBinders'
 import { useCollection } from '@/hooks/useCollection'
+import { proxied } from '@/lib/images'
 import { cn } from '@/lib/utils'
 
 const WIDE_QUERY = '(min-width: 768px)'
@@ -226,7 +227,11 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           {binder.set?.logoUrl && (
-            <img src={binder.set.logoUrl} alt="" className="h-10 max-w-24 object-contain" />
+            <img
+              src={proxied(binder.set.logoUrl)!}
+              alt=""
+              className="h-10 max-w-24 object-contain"
+            />
           )}
           <div className="min-w-0">
             <h1 className="truncate text-2xl font-bold">{binder.name}</h1>
