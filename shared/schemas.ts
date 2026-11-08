@@ -89,6 +89,7 @@ export const CollectionItemSchema = z.object({
   /** Pokémon, Treinador, Energia… e tipos (Fogo, Água…); null em cópias ainda não completadas. */
   category: z.string().nullable(),
   types: z.array(z.string()).nullable(),
+  illustrator: z.string().nullable(),
   name: z.string(),
   imageUrl: z.string().nullable(),
   setId: z.string().nullable(),
@@ -111,6 +112,39 @@ export const CollectionResponseSchema = z.object({
 })
 export type CollectionResponse = z.infer<typeof CollectionResponseSchema>
 
+// ---------- Binders a partir de uma busca (Pokémon ou artista) ----------
+
+export const SEARCH_FIELDS = ['name', 'illustrator'] as const
+export const SearchFieldSchema = z.enum(SEARCH_FIELDS)
+export type SearchField = z.infer<typeof SearchFieldSchema>
+
+/** Ordem das cartas num binder de busca: lançamento (antigas/novas primeiro) ou nome. */
+export const SEARCH_SORTS = ['oldest', 'newest', 'name'] as const
+export const SearchSortSchema = z.enum(SEARCH_SORTS)
+export type SearchSort = z.infer<typeof SearchSortSchema>
+
+export const BinderSearchSchema = z.object({
+  field: SearchFieldSchema,
+  query: z.string().trim().min(2).max(60),
+  sort: SearchSortSchema,
+})
+export type BinderSearch = z.infer<typeof BinderSearchSchema>
+
+export const SearchCandidatesQuerySchema = BinderSearchSchema.extend({
+  lang: LanguageSchema.default(DEFAULT_LANGUAGE),
+})
+
+/** Carta encontrada pela busca; `exact` = o nome é exatamente o buscado (ex.: só "Pikachu"). */
+export const SearchCandidateSchema = CardSummarySchema.extend({ exact: z.boolean() })
+export type SearchCandidate = z.infer<typeof SearchCandidateSchema>
+export const SearchCandidatesResponseSchema = z.object({ items: z.array(SearchCandidateSchema) })
+
+export const IllustratorsResponseSchema = z.object({ items: z.array(z.string()) })
+
+export const AddCardsToBinderSchema = z.object({
+  cardIds: z.array(z.string().min(1).max(100)).min(1).max(2000),
+})
+
 // ---------- Binders ----------
 
 /**
@@ -130,6 +164,8 @@ export const BinderSummarySchema = z.object({
   set: z.object({ id: z.string(), name: z.string(), logoUrl: z.string().nullable() }).nullable(),
   /** Core ou Master; null em binder em branco e nos criados antes da Sprint 4. */
   setType: SetTypeSchema.nullable(),
+  /** Busca de origem (binder por Pokémon ou artista); null nos outros. */
+  search: BinderSearchSchema.nullable(),
   /** Bolsos ocupados. */
   filled: z.number().int(),
   /** Bolsos reservados pela coleção de origem (null em binder em branco). */
@@ -217,16 +253,22 @@ export type UpdateCollectionItemInput = z.infer<typeof UpdateCollectionItemSchem
 
 const BinderNameSchema = z.string().trim().min(1).max(60)
 
-export const CreateBinderSchema = z.object({
-  name: BinderNameSchema,
-  language: LanguageSchema.default(DEFAULT_LANGUAGE),
-  /** Coleção do TCGdex para usar como molde (opcional). */
-  setId: z.string().trim().min(1).max(40).optional(),
-  /** Com molde: Core Set (uma de cada carta numerada) ou Master Set (cada versão). */
-  setType: SetTypeSchema.default('core'),
-  /** Com molde: já coloca nos bolsos as cartas que o usuário tem. */
-  fill: z.boolean().default(false),
-})
+export const CreateBinderSchema = z
+  .object({
+    name: BinderNameSchema,
+    language: LanguageSchema.default(DEFAULT_LANGUAGE),
+    /** Coleção do TCGdex para usar como molde (opcional). */
+    setId: z.string().trim().min(1).max(40).optional(),
+    /** Com molde: Core Set (uma de cada carta numerada) ou Master Set (cada versão). */
+    setType: SetTypeSchema.default('core'),
+    /** Binder a partir de uma busca: as cartas marcadas (as outras ficam como removidas). */
+    search: BinderSearchSchema.extend({
+      cardIds: z.array(z.string().min(1).max(100)).min(1).max(2000),
+    }).optional(),
+    /** Com molde: já coloca nos bolsos as cartas que o usuário tem. */
+    fill: z.boolean().default(false),
+  })
+  .refine((b) => !(b.setId && b.search), { message: 'Use setId ou search, não os dois.' })
 export type CreateBinderInput = z.input<typeof CreateBinderSchema>
 
 export const RenameBinderSchema = z.object({ name: BinderNameSchema })

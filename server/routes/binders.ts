@@ -1,14 +1,20 @@
 import { Router } from 'express'
+import type { Language } from '../../shared/languages.js'
 import {
+  AddCardsToBinderSchema,
   AddToPocketSchema,
   BinderPositionSchema,
   CreateBinderSchema,
   OptionalLangQuerySchema,
   PutSlotSchema,
   RenameBinderSchema,
+  type BinderTemplateCard,
+  type SearchCandidate,
 } from '../../shared/schemas.js'
+import { AppError } from '../errors.js'
 import { currentUser } from '../middleware/session.js'
 import type { BindersService } from '../services/binders.js'
+import { searchCandidates } from '../services/searchTemplate.js'
 import { buildSetTemplate } from '../services/setTemplate.js'
 import { resolveVariant, snapshotOf, type CollectionService } from '../services/collection.js'
 import type { CardsProvider } from '../services/tcgdex.js'
@@ -36,16 +42,71 @@ export function createBindersRouter(deps: {
 
   router.post('/', async (req, res) => {
     const { id: userId } = currentUser(res)
-    const { name, language, setId, setType, fill } = CreateBinderSchema.parse(req.body)
+    const { name, language, setId, setType, search, fill } = CreateBinderSchema.parse(req.body)
 
-    // O molde vem do TCGdex (servidor), nunca do cliente.
+    // O molde vem do TCGdex (servidor), nunca do cliente: o cliente só diz quais cartas quer.
     let set
     if (setId) {
       const detail = await cards.getSet({ lang: language, id: setId })
       const template = await buildSetTemplate(cards, language, detail, setType)
       set = { summary: detail, type: setType, template }
     }
-    res.status(201).json(await binders.create(userId, { name, language, set, fill }))
+    let fromSearch
+    if (search) {
+      const { cardIds, ...origin } = search
+      const found = await searchCandidates(cards, language, origin)
+      const chosen = new Set(cardIds)
+      const template = found.filter((c) => chosen.has(c.id)).map(toTemplateCard)
+      if (template.length === 0) {
+        throw new AppError(
+          400,
+          'NO_CARDS_SELECTED',
+          'Nenhuma das cartas escolhidas foi encontrada.',
+        )
+      }
+      const excluded = found.filter((c) => !chosen.has(c.id)).map((c) => c.id)
+      fromSearch = { search: origin, template, excluded }
+    }
+    res
+      .status(201)
+      .json(await binders.create(userId, { name, language, set, search: fromSearch, fill }))
+  })
+
+  // Binder por Pokémon/artista: cartas da busca que ainda não estão no binder nem foram removidas.
+  router.get('/:id/new-cards', async (req, res) => {
+    const { id: userId } = currentUser(res)
+    const b = await binders.withTemplate(userId, req.params.id)
+    if (!b.search) {
+      throw new AppError(400, 'BINDER_HAS_NO_SEARCH', 'Esse binder não foi criado por uma busca.')
+    }
+    const skip = new Set([...b.template.map((c) => c.id), ...(b.excluded ?? [])])
+    const found = await searchCandidates(cards, b.language as Language, b.search)
+    res.json({ items: found.filter((c) => !skip.has(c.id)) })
+  })
+
+  // Acrescenta cartas da busca no fim do binder (inclusive as que tinham sido removidas).
+  router.post('/:id/cards', async (req, res) => {
+    const { id: userId } = currentUser(res)
+    const { cardIds } = AddCardsToBinderSchema.parse(req.body)
+    const b = await binders.withTemplate(userId, req.params.id)
+    if (!b.search) {
+      throw new AppError(400, 'BINDER_HAS_NO_SEARCH', 'Esse binder não foi criado por uma busca.')
+    }
+    const wanted = new Set(cardIds)
+    const found = await searchCandidates(cards, b.language as Language, b.search)
+    const added = await binders.appendCards(
+      userId,
+      b.id,
+      found.filter((c) => wanted.has(c.id)).map(toTemplateCard),
+    )
+    res.json({ added })
+  })
+
+  // Tira uma carta do molde (bolso reservado) de qualquer binder de coleção ou de busca.
+  router.delete('/:id/template/:position', async (req, res) => {
+    const { id: userId } = currentUser(res)
+    const position = BinderPositionSchema.parse(req.params.position)
+    res.json(await binders.removeReserved(userId, req.params.id, position))
   })
 
   router.get('/:id', async (req, res) => {
@@ -112,4 +173,9 @@ export function createBindersRouter(deps: {
   })
 
   return router
+}
+
+/** Candidata da busca → bolso reservado (sem o campo `exact`). */
+function toTemplateCard(c: SearchCandidate): BinderTemplateCard {
+  return { id: c.id, localId: c.localId, name: c.name, imageUrl: c.imageUrl }
 }

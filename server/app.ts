@@ -11,6 +11,7 @@ import { createBindersRouter } from './routes/binders.js'
 import { createCardsRouter } from './routes/cards.js'
 import { createCollectionRouter } from './routes/collection.js'
 import { createImagesRouter } from './routes/images.js'
+import { createSearchRouter } from './routes/search.js'
 import { createSetsRouter } from './routes/sets.js'
 import { createAuthService } from './services/auth.js'
 import { createBindersService } from './services/binders.js'
@@ -83,6 +84,7 @@ export function createApp(deps: {
   // Catálogo é público; autenticação e coleção passam pelo middleware de sessão.
   app.use('/api/cards', createCardsRouter(deps.cards))
   app.use('/api/sets', createSetsRouter(deps.cards))
+  app.use('/api/search', createSearchRouter(deps.cards))
   app.use('/api/img', createImagesRouter(deps.fetchImage))
   app.use('/api/auth', session, createAuthRouter({ auth, google: deps.google, secure }))
   app.use(

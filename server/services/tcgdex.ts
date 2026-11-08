@@ -1,5 +1,12 @@
 import { z } from 'zod'
-import type { CardDetail, CardSearchResponse, SetDetail, SetSummary } from '../../shared/schemas.js'
+import type {
+  CardDetail,
+  CardSearchResponse,
+  CardSummary,
+  SearchField,
+  SetDetail,
+  SetSummary,
+} from '../../shared/schemas.js'
 import { VARIANTS, type Variant } from '../../shared/copies.js'
 import type { Language } from '../../shared/languages.js'
 import { AppError } from '../errors.js'
@@ -21,6 +28,13 @@ export interface CardsProvider {
   get(params: { lang: Language; id: string }): Promise<CardDetail>
   listSets(params: { lang: Language }): Promise<SetSummary[]>
   getSet(params: { lang: Language; id: string }): Promise<SetDetail>
+  /**
+   * Todas as cartas de uma busca, sem paginação: por nome (contém: "Pikachu" traz também
+   * "Pikachu V", "Pikachu e Zekrom GX"…) ou por artista (nome exato).
+   */
+  findAll(params: { lang: Language; field: SearchField; q: string }): Promise<CardSummary[]>
+  /** Nomes dos ilustradores, para sugerir na busca por artista. */
+  listIllustrators(params: { lang: Language }): Promise<string[]>
   /** Lança erro se o provedor não estiver respondendo. */
   ping(): Promise<void>
 }
@@ -324,6 +338,29 @@ export const tcgdex: CardsProvider = {
         imageUrl: imageUrl(c.image, 'low'),
       })),
     }
+  },
+
+  async findAll({ lang, field, q }) {
+    const value = field === 'illustrator' ? `eq:${q}` : q
+    const raw = await withImageFallback(
+      lang,
+      await tcgdexFetch(
+        `/${lang}/cards`,
+        `${field}=${encodeURIComponent(value)}`,
+        z.array(RawBriefSchema),
+      ),
+    )
+    return raw.map((c) => ({
+      id: c.id,
+      localId: c.localId,
+      name: c.name,
+      imageUrl: imageUrl(c.image, 'low'),
+    }))
+  },
+
+  async listIllustrators({ lang }) {
+    const raw = await tcgdexFetch(`/${lang}/illustrators`, '', z.array(z.string()))
+    return raw.filter((n) => n.trim().length > 0).sort((a, b) => a.localeCompare(b))
   },
 
   async ping() {

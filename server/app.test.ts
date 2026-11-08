@@ -62,6 +62,19 @@ const fakeSet: SetDetail = {
 }
 
 let tcgdexUp = true
+
+// Busca falsa por "Pikachu": duas coleções (base1 é a mais antiga). `newPikachu` simula uma
+// carta lançada depois de o binder ser criado.
+let newPikachu = false
+const brief = (id: string, localId: string, name: string) => ({ id, localId, name, imageUrl: null })
+const pikachuCards = () => [
+  brief('sv09-025', '025', 'Pikachu'),
+  brief('base1-58', '58', 'Pikachu'),
+  brief('sv09-030', '030', 'Pikachu ex'),
+  brief('base1-25', '25', 'Pikachu e Zekrom GX'),
+  ...(newPikachu ? [brief('sv09-099', '099', 'Pikachu V')] : []),
+]
+const aritaCards = [brief('base1-4', '4', 'Charizard'), brief('sv09-001', '001', 'Carta 001')]
 /** Cartas que o TCGdex falso passa a responder 404 (para testar cartas que sumiram). */
 const gone = new Set<string>()
 
@@ -90,7 +103,25 @@ const cards: CardsProvider = {
         cardCount: 12,
         officialCount: 10,
       },
+      // A lista do TCGdex vem da coleção mais nova para a mais antiga.
+      {
+        id: 'base1',
+        name: 'Base',
+        logoUrl: null,
+        symbolUrl: null,
+        cardCount: 102,
+        officialCount: 102,
+      },
     ]
+  },
+  async findAll({ field, q }) {
+    const all = field === 'illustrator' ? (q === 'Arita' ? aritaCards : []) : pikachuCards()
+    return field === 'name'
+      ? all.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()))
+      : all
+  },
+  async listIllustrators() {
+    return ['Arita', 'Sugimori']
   },
   async getSet({ id }) {
     if (id !== fakeSet.id) throw new AppError(404, 'SET_NOT_FOUND', 'Coleção não encontrada.')
@@ -694,7 +725,7 @@ describe('/api/sets', () => {
     const res = await new Client().get('/api/sets')
     expect(res.status).toBe(200)
     const body = await json<{ items: { id: string }[] }>(res)
-    expect(body.items.map((s) => s.id)).toEqual(['sv09'])
+    expect(body.items.map((s) => s.id)).toEqual(['sv09', 'base1'])
   })
 
   it('detalha uma coleção com as cartas', async () => {
@@ -1104,5 +1135,140 @@ describe('idiomas misturados (Sprint 6)', () => {
     expect(all.items.map((b) => b.name).sort()).toEqual(['FR', 'PT'])
     const fr = await json<{ items: BinderSummary[] }>(await client.get('/api/binders?lang=fr'))
     expect(fr.items.map((b) => b.name)).toEqual(['FR'])
+  })
+})
+
+describe('binders por Pokémon ou artista (Sprint 7)', () => {
+  type Candidate = { id: string; name: string; exact: boolean }
+  const candidates = async (query: string) =>
+    (await json<{ items: Candidate[] }>(await new Client().get(`/api/search/candidates?${query}`)))
+      .items
+
+  async function setup() {
+    const { client } = await loginAs({ sub: 'google-a', email: 'a@example.com' })
+    const create = async (body: Record<string, unknown>) => {
+      const res = await client.post('/api/binders', body)
+      expect(res.status).toBe(201)
+      return json<BinderSummary>(res)
+    }
+    const detail = async (id: string) => json<BinderDetail>(await client.get(`/api/binders/${id}`))
+    return { client, create, detail }
+  }
+
+  it('candidatas por nome: todas as variações, marcando as de nome exato, na ordem escolhida', async () => {
+    const oldest = await candidates('field=name&query=Pikachu&sort=oldest')
+    expect(oldest.map((c) => [c.id, c.exact])).toEqual([
+      ['base1-25', false],
+      ['base1-58', true],
+      ['sv09-025', true],
+      ['sv09-030', false],
+    ])
+    const newest = await candidates('field=name&query=Pikachu&sort=newest')
+    expect(newest.map((c) => c.id)).toEqual(['sv09-025', 'sv09-030', 'base1-25', 'base1-58'])
+    const byName = await candidates('field=name&query=Pikachu&sort=name')
+    expect(byName.map((c) => c.name)[0]).toBe('Pikachu')
+  })
+
+  it('candidatas por artista e lista de artistas', async () => {
+    const arita = await candidates('field=illustrator&query=Arita&sort=oldest')
+    expect(arita.map((c) => c.id)).toEqual(['base1-4', 'sv09-001'])
+    const res = await new Client().get('/api/search/illustrators')
+    expect(await json(res)).toEqual({ items: ['Arita', 'Sugimori'] })
+  })
+
+  it('cria binder só com as cartas marcadas; as outras ficam como removidas', async () => {
+    const { create, detail } = await setup()
+    const binder = await create({
+      name: 'Pikachus',
+      search: {
+        field: 'name',
+        query: 'Pikachu',
+        sort: 'oldest',
+        cardIds: ['sv09-025', 'base1-58'],
+      },
+    })
+    expect(binder).toMatchObject({
+      search: { field: 'name', query: 'Pikachu', sort: 'oldest' },
+      templateSize: 2,
+      set: null,
+    })
+    expect((await detail(binder.id)).template?.map((c) => c.id)).toEqual(['base1-58', 'sv09-025'])
+  })
+
+  it('rejeita seleção vazia de cartas e setId junto com busca', async () => {
+    const { client } = await setup()
+    const empty = await client.post('/api/binders', {
+      name: 'X',
+      search: { field: 'name', query: 'Pikachu', sort: 'oldest', cardIds: ['nao-existe'] },
+    })
+    expect(empty.status).toBe(400)
+    const both = await client.post('/api/binders', {
+      name: 'X',
+      setId: 'sv09',
+      search: { field: 'name', query: 'Pikachu', sort: 'oldest', cardIds: ['sv09-025'] },
+    })
+    expect(both.status).toBe(400)
+  })
+
+  it('cartas novas: só as lançadas depois (as removidas não voltam) e entram no fim', async () => {
+    const { client, create, detail } = await setup()
+    const binder = await create({
+      name: 'Pikachus',
+      search: { field: 'name', query: 'Pikachu', sort: 'oldest', cardIds: ['sv09-025'] },
+    })
+    const fresh = async () =>
+      (await json<{ items: Candidate[] }>(await client.get(`/api/binders/${binder.id}/new-cards`)))
+        .items
+    expect(await fresh()).toEqual([])
+
+    newPikachu = true
+    try {
+      expect((await fresh()).map((c) => c.id)).toEqual(['sv09-099'])
+      // Dá para trazer de volta uma removida também.
+      const res = await client.post(`/api/binders/${binder.id}/cards`, {
+        cardIds: ['sv09-099', 'base1-58', 'nao-existe'],
+      })
+      expect(await json(res)).toEqual({ added: 2 })
+    } finally {
+      newPikachu = false
+    }
+    expect((await detail(binder.id)).template?.map((c) => c.id)).toEqual([
+      'sv09-025',
+      'base1-58',
+      'sv09-099',
+    ])
+  })
+
+  it('remover bolso de binder de coleção puxa os seguintes, com as cartas colocadas', async () => {
+    const { client, create, detail } = await setup()
+    for (const id of ['sv09-001', 'sv09-002', 'sv09-003']) {
+      await client.post('/api/collection', { cardId: id })
+    }
+    const binder = await create({ name: 'AJ', setId: 'sv09', fill: true })
+    expect((await detail(binder.id)).slots.map((s) => s.position)).toEqual([0, 1, 2])
+
+    const res = await client.delete(`/api/binders/${binder.id}/template/1`)
+    expect(res.status).toBe(200)
+    const d = await detail(binder.id)
+    expect(d.templateSize).toBe(9)
+    expect(d.template?.slice(0, 2).map((c) => c.id)).toEqual(['sv09-001', 'sv09-003'])
+    expect(d.slots.map((s) => [s.position, s.item.cardId])).toEqual([
+      [0, 'sv09-001'],
+      [1, 'sv09-003'],
+    ])
+    expect((await client.delete(`/api/binders/${binder.id}/template/50`)).status).toBe(400)
+  })
+
+  it('binder em branco não tem bolsos reservados para remover', async () => {
+    const { client, create } = await setup()
+    const binder = await create({ name: 'Livre' })
+    expect((await client.delete(`/api/binders/${binder.id}/template/0`)).status).toBe(400)
+    expect((await client.get(`/api/binders/${binder.id}/new-cards`)).status).toBe(400)
+  })
+
+  it('a cópia guarda o artista', async () => {
+    const { client } = await setup()
+    const res = await client.post('/api/collection', { cardId: 'base1-25' })
+    expect(await json(res)).toMatchObject({ illustrator: 'Alguém' })
   })
 })

@@ -9,7 +9,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core'
 import type { Condition, Variant } from '../../shared/copies.js'
-import type { BinderTemplateCard } from '../../shared/schemas.js'
+import type { BinderSearch, BinderTemplateCard } from '../../shared/schemas.js'
 import type { SetType } from '../../shared/setTypes.js'
 
 /** Contas. O Google é o único provedor por enquanto; `google_id` é o "sub" estável do Google. */
@@ -72,6 +72,7 @@ export const collectionItems = sqliteTable(
     category: text('category'),
     /** null = ainda não completado (cópias de antes da Sprint 6). */
     types: text('types', { mode: 'json' }).$type<string[]>(),
+    illustrator: text('illustrator'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`(CURRENT_TIMESTAMP)`),
@@ -112,6 +113,10 @@ export const binders = sqliteTable(
     /** core/master; null em binder em branco e nos criados antes da Sprint 4. */
     setType: text('set_type').$type<SetType>(),
     template: text('template', { mode: 'json' }).$type<BinderTemplateCard[]>(),
+    /** Binder por Pokémon ou artista: a busca de origem, para "Buscar cartas novas". */
+    search: text('search', { mode: 'json' }).$type<BinderSearch>(),
+    /** Cartas que o usuário tirou do molde: não voltam ao buscar cartas novas. */
+    excluded: text('excluded', { mode: 'json' }).$type<string[]>(),
     createdAt: text('created_at')
       .notNull()
       .default(sql`(CURRENT_TIMESTAMP)`),
