@@ -1,8 +1,9 @@
 import {
   CONDITIONS,
   CONDITION_LABELS,
-  VARIANTS,
-  VARIANT_LABELS,
+  VARIANT_PATTERN,
+  compareVariants,
+  variantLabel,
   type Condition,
   type Variant,
 } from '../../shared/copies'
@@ -54,7 +55,8 @@ export function readFilters(params: URLSearchParams): CollectionFilters {
     set: params.get('set') ?? '',
     rarity: params.get('rarity') ?? '',
     type: params.get('type') ?? '',
-    variant: pick('variant', VARIANTS),
+    // Qualquer código de variante válido (inclui as impressões especiais do Grand Master).
+    variant: VARIANT_PATTERN.test(params.get('variant') ?? '') ? params.get('variant')! : '',
     condition: pick('condition', CONDITIONS),
     artist: params.get('artist') ?? '',
     sort: sort && sort in SORT_LABELS ? (sort as SortKey) : 'recent',
@@ -144,9 +146,9 @@ export function filterOptions(items: CollectionItem[]) {
     type: [...count(items.flatMap(typesOf))]
       .map(([value, n]) => ({ value, label: value, n }))
       .sort(byLabel),
-    variant: VARIANTS.filter((v) => items.some((i) => i.variant === v)).map((v) => ({
+    variant: [...new Set(items.map((i) => i.variant))].sort(compareVariants).map((v) => ({
       value: v,
-      label: VARIANT_LABELS[v],
+      label: variantLabel(v),
       n: items.filter((i) => i.variant === v).length,
     })),
     condition: CONDITIONS.filter((c) => items.some((i) => i.condition === c)).map((c) => ({

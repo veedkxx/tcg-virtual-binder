@@ -1,5 +1,5 @@
 import { Loader2, Plus } from 'lucide-react'
-import { VARIANT_LABELS, VARIANT_SHORT } from '../../../shared/copies'
+import { variantLabel, variantShort } from '../../../shared/copies'
 import type { Language } from '../../../shared/languages'
 import type { BinderTemplateCard, CollectionItem } from '../../../shared/schemas'
 import { CardImage } from '@/components/CardImage'
@@ -80,7 +80,7 @@ function PocketContent({
           aria-label={
             owned
               ? `${card.name} #${card.localId}: você tem, toque para colocar`
-              : `${card.name} #${card.localId}${card.variant ? ` (${VARIANT_LABELS[card.variant]})` : ''}: falta`
+              : `${card.name} #${card.localId}${card.variant ? ` (${variantLabel(card.variant)})` : ''}: falta`
           }
           className="block w-full rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
@@ -98,7 +98,7 @@ function PocketContent({
         <div className="pointer-events-none absolute inset-x-1 bottom-1 flex items-center gap-1">
           <span className="flex-1 truncate rounded bg-background/85 px-1 py-0.5 text-center text-[10px] font-medium tabular-nums sm:text-xs">
             #{card.localId}
-            {card.variant && card.variant !== 'normal' && ` · ${VARIANT_SHORT[card.variant]}`}
+            {card.variant && card.variant !== 'normal' && ` · ${variantShort(card.variant)}`}
           </span>
           {!owned && onQuickAdd && (
             <button
@@ -127,7 +127,7 @@ function PocketContent({
     <button
       type="button"
       onClick={onClick}
-      aria-label={`${item.name} (${VARIANT_LABELS[item.variant]}, ${item.condition}), você tem ${item.quantity}`}
+      aria-label={`${item.name} (${variantLabel(item.variant)}, ${item.condition}), você tem ${item.quantity}`}
       className="group relative rounded-lg outline-none transition-transform hover:-translate-y-0.5 hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-ring"
     >
       <CardImage src={item.imageUrl} alt={item.name} className="shadow-md group-hover:shadow-xl" />
@@ -142,7 +142,7 @@ function PocketContent({
       <Badge className="absolute right-1 top-1 px-1.5 text-[10px] tabular-nums shadow sm:text-xs">
         ×{item.quantity}
         {item.variant !== 'normal' && (
-          <span className="opacity-80">· {VARIANT_SHORT[item.variant]}</span>
+          <span className="opacity-80">· {variantShort(item.variant)}</span>
         )}
       </Badge>
     </button>

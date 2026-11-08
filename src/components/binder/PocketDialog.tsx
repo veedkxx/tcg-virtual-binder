@@ -3,7 +3,7 @@ import { ArrowLeftRight, ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   DEFAULT_CONDITION,
-  VARIANT_LABELS,
+  variantLabel,
   type Condition,
   type Variant,
 } from '../../../shared/copies'
@@ -216,7 +216,7 @@ function MissingInfo({
         <DialogTitle className="text-2xl">{card.name}</DialogTitle>
         <DialogDescription>
           #{card.localId}
-          {card.variant && ` · ${VARIANT_LABELS[card.variant]}`} · você ainda não tem esta carta
+          {card.variant && ` · ${variantLabel(card.variant)}`} · você ainda não tem esta carta
         </DialogDescription>
       </DialogHeader>
       {detail.isPending ? (

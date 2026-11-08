@@ -10,18 +10,9 @@
 | 4. Coleção completa | Variantes e condição, português e inglês, Core Set e Master Set, adicionar direto no bolso |
 | 5. Desempenho | Função em São Paulo junto do banco, imagens pela CDN com reserva em inglês, bundle menor, migrations no deploy, CI |
 | 6. Filtros e idiomas | Filtros na coleção e nos binders, binders com idiomas misturados, es/fr/de/it |
+| 7. Binders personalizados | Binder por Pokémon ou artista, remover cartas de binders, artista nos filtros, Grand Master Set |
 
 ## Próximas sprints
-
-### Sprint 7: binders personalizados
-
-A ideia do projeto é dar o máximo de liberdade para o usuário montar o que quiser.
-
-- Binder a partir de uma busca: por Pokémon (ex.: todas as cartas de Pikachu) ou por artista. O usuário
-  desmarca as cartas que não quer antes de criar.
-- Remover cartas (bolsos) de qualquer binder de coleção já criado.
-- Artista (ilustrador) nos filtros e na ordenação da coleção e dos binders.
-- Grand Master Set (reverse Poké Ball/Master Ball, cosmos, carimbos).
 
 ### Sprint 8: organização e lista de desejos
 

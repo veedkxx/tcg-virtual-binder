@@ -1,7 +1,7 @@
 import {
   CONDITIONS,
   CONDITION_LABELS,
-  VARIANT_LABELS,
+  variantLabel,
   type Condition,
   type Variant,
 } from '../../shared/copies'
@@ -28,7 +28,7 @@ export function CopyBadges({
     <span className={cn('inline-flex flex-wrap gap-1', className)}>
       {showVariant && (
         <Badge variant={variant === 'normal' ? 'outline' : 'secondary'}>
-          {VARIANT_LABELS[variant]}
+          {variantLabel(variant)}
         </Badge>
       )}
       {showCondition && (
@@ -67,7 +67,7 @@ export function VariantPicker({
             v === value && 'border-primary bg-primary text-primary-foreground hover:bg-primary/90',
           )}
         >
-          {VARIANT_LABELS[v]}
+          {variantLabel(v)}
         </button>
       ))}
     </div>
@@ -127,7 +127,7 @@ export function VariantSelect({
       {/* A cópia pode ter uma variante que o TCGdex não lista mais: mantém visível. */}
       {[...new Set([value, ...options])].map((v) => (
         <option key={v} value={v}>
-          {VARIANT_LABELS[v]}
+          {variantLabel(v)}
         </option>
       ))}
     </select>

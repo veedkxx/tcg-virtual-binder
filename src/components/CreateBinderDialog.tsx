@@ -345,7 +345,12 @@ function SetTypeCount({ set, type }: { set: SetSummary; type: SetType }) {
   return (
     <span className="font-normal text-muted-foreground">
       {' '}
-      · {type === 'master' ? `${count} cartas, em cada versão` : `${count} cartas`}
+      ·{' '}
+      {type === 'core'
+        ? `${count} cartas`
+        : type === 'master'
+          ? `${count} cartas, em cada versão`
+          : `${count} cartas, em todas as versões`}
     </span>
   )
 }
