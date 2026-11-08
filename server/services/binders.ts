@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { and, asc, count, desc, eq, gt, inArray, sql } from 'drizzle-orm'
-import { compareCopies, VARIANT_LABELS } from '../../shared/copies.js'
+import { compareCopies, variantLabel } from '../../shared/copies.js'
 import type { Language } from '../../shared/languages.js'
 import type {
   BinderDetail,
@@ -296,7 +296,7 @@ export function createBindersService(db: Db) {
           throw new AppError(
             400,
             'WRONG_VARIANT_FOR_POCKET',
-            `Esse bolso é da versão ${VARIANT_LABELS[reserved.variant]} de ${reserved.name}.`,
+            `Esse bolso é da versão ${variantLabel(reserved.variant)} de ${reserved.name}.`,
           )
         }
       }

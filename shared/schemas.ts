@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { CONDITIONS, DEFAULT_CONDITION, VARIANTS } from './copies.js'
+import { CONDITIONS, DEFAULT_CONDITION, VARIANT_PATTERN } from './copies.js'
 import { DEFAULT_LANGUAGE, ENABLED_LANGUAGES } from './languages.js'
 import { SET_TYPES } from './setTypes.js'
 
@@ -11,7 +11,8 @@ export const POCKETS_PER_PAGE = 9
 export const MAX_BINDER_POSITION = 10_000 * POCKETS_PER_PAGE - 1
 
 export const LanguageSchema = z.enum(ENABLED_LANGUAGES)
-export const VariantSchema = z.enum(VARIANTS)
+/** Código da variante (ver `shared/copies.ts`): `normal`, `reverse:pokeball`… */
+export const VariantSchema = z.string().max(100).regex(VARIANT_PATTERN)
 export const ConditionSchema = z.enum(CONDITIONS)
 export const SetTypeSchema = z.enum(SET_TYPES)
 
@@ -43,9 +44,9 @@ export const CardDetailSchema = CardSummarySchema.extend({
   hp: z.number().nullable(),
   types: z.array(z.string()),
   description: z.string().nullable(),
-  /** Variantes em que a carta foi impressa (nunca vazio). */
+  /** Todas as impressões da carta, inclusive especiais (Grand Master Set). Nunca vazio. */
   variants: z.array(VariantSchema).min(1),
-  /** Só as versões que saem nos boosters (sem carimbos/acabamentos especiais): Master Set. */
+  /** Só as impressões comuns de booster (sem carimbo nem acabamento especial): Master Set. */
   boosterVariants: z.array(VariantSchema).min(1),
   set: z.object({
     id: z.string(),

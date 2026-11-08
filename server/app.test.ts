@@ -25,7 +25,10 @@ const variantsOf = (id: string): { all: Variant[]; booster: Variant[] } =>
   id.endsWith('-holo') || id === 'sv09-011'
     ? { all: ['holo'], booster: ['holo'] }
     : id === 'sv09-005'
-      ? { all: ['normal', 'reverse', 'holo'], booster: ['normal', 'reverse'] }
+      ? {
+          all: ['normal', 'reverse', 'holo:cosmos@player-rewards-program'],
+          booster: ['normal', 'reverse'],
+        }
       : { all: ['normal', 'reverse'], booster: ['normal', 'reverse'] }
 
 const fakeCard = (id: string, language: Language = 'pt'): CardDetail => ({
@@ -895,6 +898,46 @@ describe('/api/binders', () => {
       variant: 'normal',
     })
     expect(await json(added)).toMatchObject({ cardId: 'sv09-002', variant: 'reverse' })
+  })
+
+  it('Grand Master Set: o Master mais as impressões especiais', async () => {
+    const { create, detail } = await setup()
+    const binder = await create({ name: 'AJ GM', setId: 'sv09', setType: 'grandmaster' })
+    expect(binder).toMatchObject({ setType: 'grandmaster', templateSize: 24 })
+    const d = await detail(binder.id)
+    expect(d.template?.filter((c) => c.id === 'sv09-005').map((c) => c.variant)).toEqual([
+      'normal',
+      'reverse',
+      'holo:cosmos@player-rewards-program',
+    ])
+  })
+
+  it('cópia com impressão especial: aceita se existir e entra no bolso certo', async () => {
+    const { client, create, put } = await setup()
+    const special = await client.post('/api/collection', {
+      cardId: 'sv09-005',
+      variant: 'holo:cosmos@player-rewards-program',
+    })
+    expect(special.status).toBe(201)
+    const item = await json<ItemBody>(special)
+    const invalid = await client.post('/api/collection', {
+      cardId: 'sv09-005',
+      variant: 'holo:qualquer-coisa',
+    })
+    expect(invalid.status).toBe(400)
+    const malformed = await client.post('/api/collection', {
+      cardId: 'sv09-005',
+      variant: 'nao-e-variante',
+    })
+    expect(malformed.status).toBe(400)
+
+    const binder = await create({ name: 'GM', setId: 'sv09', setType: 'grandmaster' })
+    const d = await json<BinderDetail>(await client.get(`/api/binders/${binder.id}`))
+    const pocket = d.template!.findIndex(
+      (c) => c.id === 'sv09-005' && c.variant === 'holo:cosmos@player-rewards-program',
+    )
+    expect((await put(binder.id, pocket, item.id)).status).toBe(204)
+    expect((await put(binder.id, pocket - 1, item.id)).status).toBe(400)
   })
 
   it('rejeita tipo de binder desconhecido', async () => {
