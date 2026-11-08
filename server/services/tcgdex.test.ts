@@ -107,8 +107,53 @@ describe('tcgdex', () => {
       }),
     )
     const card = await tcgdex.get({ lang: 'pt', id: 'sv09-047' })
-    expect(card.variants).toEqual(['normal', 'reverse', 'holo'])
+    expect(card.variants).toEqual([
+      'normal',
+      'reverse',
+      'reverse:pokeball',
+      'holo:cosmos@player-rewards-program',
+    ])
     expect(card.boosterVariants).toEqual(['normal', 'reverse'])
+  })
+
+  it('em outro idioma, os códigos das impressões vêm da carta em inglês', async () => {
+    const card = (foil: string) => ({
+      id: 'sv08.5-001',
+      localId: '001',
+      name: 'Exeggcute',
+      set: { id: 'sv08.5', name: 'Prismatic' },
+      variants_detailed: [{ type: 'Normal' }, { type: 'Reverse', foil }],
+    })
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(ok(String(input).includes('/pt/') ? card('Poké Bola') : card('pokeball'))),
+    )
+    expect((await tcgdex.get({ lang: 'pt', id: 'sv08.5-001' })).variants).toEqual([
+      'normal',
+      'reverse:pokeball',
+    ])
+  })
+
+  it('subtipos e carimbos antigos (Base Set) viram códigos próprios', async () => {
+    fetchMock.mockResolvedValueOnce(
+      ok({
+        id: 'base1-4',
+        localId: '4',
+        name: 'Charizard',
+        set: { id: 'base1', name: 'Base' },
+        variants_detailed: [
+          { type: 'holo', subtype: 'unlimited' },
+          { type: 'holo', subtype: 'shadowless', stamp: ['1st-edition'] },
+          { type: 'holo', subtype: 'shadowless' },
+        ],
+      }),
+    )
+    const card = await tcgdex.get({ lang: 'en', id: 'base1-4' })
+    expect(card.variants).toEqual([
+      'holo~shadowless',
+      'holo~unlimited',
+      'holo~shadowless@1st-edition',
+    ])
+    expect(card.boosterVariants).toEqual(['holo~shadowless', 'holo~unlimited'])
   })
 
   it('carta sem imagem em português usa a mesma carta em inglês', async () => {

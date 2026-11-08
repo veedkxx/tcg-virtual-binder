@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import type { BinderSearch } from '../../shared/schemas'
 import type { SetType } from '../../shared/setTypes'
 import type { AddToPocketInput, BinderDetail, CollectionItem } from '../../shared/schemas'
 import { useAuth } from '@/hooks/useAuth'
@@ -54,11 +55,16 @@ export function useCreateBinder() {
   const language = useUiStore((s) => s.language)
   const invalidate = useInvalidateBinders()
   return useMutation({
-    mutationFn: (input: { name: string; setId?: string; setType?: SetType; fill: boolean }) =>
-      api.createBinder({ ...input, language }),
+    mutationFn: (input: {
+      name: string
+      setId?: string
+      setType?: SetType
+      search?: BinderSearch & { cardIds: string[] }
+      fill: boolean
+    }) => api.createBinder({ ...input, language }),
     onSuccess: (binder) => {
       toast.success(
-        binder.set && binder.filled > 0
+        (binder.set || binder.search) && binder.filled > 0
           ? `Binder criado com ${binder.filled} ${binder.filled === 1 ? 'carta' : 'cartas'} que você já tem.`
           : 'Binder criado.',
       )
@@ -156,4 +162,59 @@ export function useSlotMutations(binderId: string) {
   })
 
   return { put, clear, addNew }
+}
+
+/** Cartas encontradas pela busca (para montar um binder por Pokémon ou artista). */
+export function useSearchCandidates(search: BinderSearch | null) {
+  const language = useUiStore((s) => s.language)
+  return useQuery({
+    queryKey: ['search', 'candidates', language, search],
+    queryFn: () => api.searchCandidates(search!, language),
+    enabled: search !== null,
+    staleTime: 60 * 60_000,
+  })
+}
+
+export function useIllustrators(enabled: boolean) {
+  const language = useUiStore((s) => s.language)
+  return useQuery({
+    queryKey: ['search', 'illustrators', language],
+    queryFn: () => api.listIllustrators(language),
+    enabled,
+    staleTime: 24 * 60 * 60_000,
+  })
+}
+
+/** Cartas da busca de origem que ainda não estão no binder (lançadas depois ou removidas). */
+export function useNewBinderCards(binderId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['binders', 'new-cards', binderId],
+    queryFn: () => api.newBinderCards(binderId),
+    enabled,
+  })
+}
+
+export function useAddBinderCards(binderId: string) {
+  const invalidate = useInvalidateBinders()
+  return useMutation({
+    mutationFn: (cardIds: string[]) => api.addBinderCards(binderId, cardIds),
+    onSuccess: ({ added }) =>
+      toast.success(
+        `${added} ${added === 1 ? 'carta acrescentada' : 'cartas acrescentadas'} no fim do binder.`,
+      ),
+    onError: (e) => toast.error(errorMessage(e)),
+    onSettled: invalidate,
+  })
+}
+
+/** Tira uma carta do molde do binder; os bolsos seguintes andam uma posição para trás. */
+export function useRemoveReserved(binderId: string) {
+  const invalidate = useInvalidateBinders()
+  return useMutation({
+    mutationFn: ({ position }: { position: number; name: string }) =>
+      api.removeReserved(binderId, position),
+    onSuccess: (_r, { name }) => toast(`${name} saiu deste binder.`),
+    onError: (e) => toast.error(errorMessage(e)),
+    onSettled: invalidate,
+  })
 }

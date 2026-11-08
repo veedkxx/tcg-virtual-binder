@@ -1,6 +1,20 @@
 import { z } from 'zod'
-import type { CardDetail, CardSearchResponse, SetDetail, SetSummary } from '../../shared/schemas.js'
-import { VARIANTS, type Variant } from '../../shared/copies.js'
+import type {
+  CardDetail,
+  CardSearchResponse,
+  CardSummary,
+  SearchField,
+  SetDetail,
+  SetSummary,
+} from '../../shared/schemas.js'
+import {
+  VARIANTS,
+  compareVariants,
+  isSpecialVariant,
+  variantCode,
+  type BaseVariant,
+  type Variant,
+} from '../../shared/copies.js'
 import type { Language } from '../../shared/languages.js'
 import { AppError } from '../errors.js'
 
@@ -21,6 +35,13 @@ export interface CardsProvider {
   get(params: { lang: Language; id: string }): Promise<CardDetail>
   listSets(params: { lang: Language }): Promise<SetSummary[]>
   getSet(params: { lang: Language; id: string }): Promise<SetDetail>
+  /**
+   * Todas as cartas de uma busca, sem paginação: por nome (contém: "Pikachu" traz também
+   * "Pikachu V", "Pikachu e Zekrom GX"…) ou por artista (nome exato).
+   */
+  findAll(params: { lang: Language; field: SearchField; q: string }): Promise<CardSummary[]>
+  /** Nomes dos ilustradores, para sugerir na busca por artista. */
+  listIllustrators(params: { lang: Language }): Promise<string[]>
   /** Lança erro se o provedor não estiver respondendo. */
   ping(): Promise<void>
 }
@@ -46,6 +67,7 @@ const RawCardSchema = RawBriefSchema.extend({
     .array(
       z.object({
         type: z.string(),
+        subtype: z.string().nullish(),
         stamp: z.array(z.string()).nullish(),
         foil: z.string().nullish(),
       }),
@@ -212,28 +234,60 @@ async function fetchUpstream<S extends z.ZodTypeAny>(
 const imageUrl = (base: string | undefined, quality: 'low' | 'high') =>
   base ? `${base}/${quality}.webp` : null
 
-/** Variantes impressas, na ordem de VARIANTS. Sem informação do TCGdex, assume "normal". */
+/** Sem `variants_detailed`: as versões base marcadas como `true`; sem nada, "normal". */
 function toVariants(raw: Record<string, boolean | null | undefined> | null | undefined): Variant[] {
   const found = VARIANTS.filter((v) => raw?.[v] === true)
   return found.length > 0 ? found : ['normal']
 }
 
+/** "Poké Ball" → "poke-ball"; os valores em inglês já vêm assim ("pokeball", "set-logo"). */
+const slug = (s: string | null | undefined) =>
+  (s ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+
+// `type` opcional: a Vercel compila sem strictNullChecks e aí o zod infere tudo como opcional.
+type Detailed = {
+  type?: string
+  subtype?: string | null
+  stamp?: string[] | null
+  foil?: string | null
+}[]
+
 /**
- * Versões de booster: as impressões sem carimbo nem acabamento especial. O TCGdex marca, por
- * exemplo, a holo carimbada de promo de uma carta comum como `holo`; ela fica de fora.
- * Os nomes vêm traduzidos em alguns idiomas ("Normal", "Reverse"), por isso o toLowerCase.
+ * Todas as impressões da carta, como códigos de variante (`reverse:pokeball`…). Vêm do
+ * `variants_detailed`; sem ele, das versões base. Ordenadas: comuns primeiro.
  */
-function toBoosterVariants(
-  // `type` opcional: a Vercel compila sem strictNullChecks e aí o zod infere tudo como opcional.
-  detailed: { type?: string; stamp?: string[] | null; foil?: string | null }[] | null | undefined,
-  all: Variant[],
+function toPrintVariants(
+  detailed: Detailed | null | undefined,
+  base: Record<string, boolean | null | undefined> | null | undefined,
 ): Variant[] {
-  if (!detailed || detailed.length === 0) return all
-  const plain = new Set(
-    detailed.filter((d) => !d.stamp?.length && !d.foil).map((d) => (d.type ?? '').toLowerCase()),
-  )
-  const found = all.filter((v) => plain.has(v.toLowerCase()))
-  return found.length > 0 ? found : all
+  const codes = (detailed ?? []).flatMap((d) => {
+    const type = slug(d.type)
+    if (!(VARIANTS as readonly string[]).includes(type)) return []
+    return [
+      variantCode({
+        base: type as BaseVariant,
+        subtype: slug(d.subtype) || undefined,
+        foil: slug(d.foil) || undefined,
+        stamps: (d.stamp ?? []).map(slug).filter(Boolean),
+      }),
+    ]
+  })
+  const unique = [...new Set(codes)].sort(compareVariants)
+  return unique.length > 0 ? unique : toVariants(base)
+}
+
+/**
+ * Impressões comuns de booster (Master Set): sem carimbo nem acabamento especial. O TCGdex marca,
+ * por exemplo, a holo carimbada de promo de uma carta comum como `holo`; ela fica de fora.
+ */
+function toBoosterVariants(all: Variant[]): Variant[] {
+  const plain = all.filter((v) => !isSpecialVariant(v))
+  return plain.length > 0 ? plain : all
 }
 
 const assetUrl = (base: string | undefined) => (base ? `${base}.webp` : null)
@@ -274,8 +328,15 @@ export const tcgdex: CardsProvider = {
   },
 
   async get({ lang, id }) {
-    const raw = await tcgdexFetch(`/${lang}/cards/${encodeURIComponent(id)}`, '', RawCardSchema)
+    const path = `/cards/${encodeURIComponent(id)}`
+    // As impressões vêm sempre da carta em inglês: em outros idiomas os nomes vêm traduzidos pela
+    // metade ("Poké Bola", "Logo da coleção"), e o código da variante precisa ser o mesmo em todos.
+    const [raw, en] = await Promise.all([
+      tcgdexFetch(`/${lang}${path}`, '', RawCardSchema),
+      lang === 'en' ? null : tcgdexFetch(`/en${path}`, '', RawCardSchema).catch(() => null),
+    ])
     const [c] = (await withImageFallback(lang, [raw], raw.set.id)) as [typeof raw]
+    const variants = toPrintVariants((en ?? raw).variants_detailed, (en ?? raw).variants)
 
     return {
       id: c.id,
@@ -290,8 +351,8 @@ export const tcgdex: CardsProvider = {
       hp: c.hp ?? null,
       types: c.types ?? [],
       description: c.description ?? null,
-      variants: toVariants(c.variants),
-      boosterVariants: toBoosterVariants(c.variants_detailed, toVariants(c.variants)),
+      variants,
+      boosterVariants: toBoosterVariants(variants),
       set: {
         id: c.set.id,
         name: c.set.name,
@@ -324,6 +385,29 @@ export const tcgdex: CardsProvider = {
         imageUrl: imageUrl(c.image, 'low'),
       })),
     }
+  },
+
+  async findAll({ lang, field, q }) {
+    const value = field === 'illustrator' ? `eq:${q}` : q
+    const raw = await withImageFallback(
+      lang,
+      await tcgdexFetch(
+        `/${lang}/cards`,
+        `${field}=${encodeURIComponent(value)}`,
+        z.array(RawBriefSchema),
+      ),
+    )
+    return raw.map((c) => ({
+      id: c.id,
+      localId: c.localId,
+      name: c.name,
+      imageUrl: imageUrl(c.image, 'low'),
+    }))
+  },
+
+  async listIllustrators({ lang }) {
+    const raw = await tcgdexFetch(`/${lang}/illustrators`, '', z.array(z.string()))
+    return raw.filter((n) => n.trim().length > 0).sort((a, b) => a.localeCompare(b))
   },
 
   async ping() {

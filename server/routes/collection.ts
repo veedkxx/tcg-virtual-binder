@@ -57,7 +57,7 @@ export function createCollectionRouter(deps: {
           // Carta que o TCGdex não acha mais: marca sem tipos para não tentar de novo. Outros
           // erros (TCGdex fora do ar) deixam para a próxima chamada.
           if (err instanceof AppError && err.status === 404) {
-            await collection.setDetails(r.id, { category: null, types: [] })
+            await collection.setDetails(r.id, { category: null, types: [], illustrator: null })
           }
         }
       }),

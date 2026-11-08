@@ -46,7 +46,11 @@ drizzle/              migrations geradas pelo drizzle-kit
 | GET | `/api/sets?lang=` | coleções do TCGdex (mais novas primeiro) |
 | GET | `/api/sets/:id?lang=` | coleção com as cartas |
 | GET | `/api/binders?lang=` | binders do usuário (sem `lang`: todos os idiomas) |
-| POST | `/api/binders` | `{ name, setId?, setType?, fill? }`; com `setId`, monta Core Set (padrão) ou Master Set |
+| POST | `/api/binders` | `{ name, setId?, setType?, search?, fill? }`; `setId` monta Core/Master/Grand Master Set; `search` monta por Pokémon ou artista |
+| GET | `/api/search/candidates?field=&query=&sort=&lang=` | cartas de uma busca por Pokémon (`name`) ou artista (`illustrator`) |
+| GET | `/api/search/illustrators?lang=` | lista de artistas |
+| GET / POST | `/api/binders/:id/new-cards` · `/api/binders/:id/cards` | cartas novas/removidas da busca · acrescentar no fim |
+| DELETE | `/api/binders/:id/template/:position` | tira a carta do binder (os bolsos seguintes andam) |
 | GET / PATCH / DELETE | `/api/binders/:id` | detalhe / renomear `{ name }` / apagar (a coleção não muda) |
 | POST | `/api/binders/:id/fill` | coloca as cartas que o usuário tem nos bolsos vazios do molde |
 | PUT / DELETE | `/api/binders/:id/slots/:position` | `{ collectionItemId }` coloca/troca / esvazia o bolso |

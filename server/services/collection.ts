@@ -19,6 +19,7 @@ export interface CardSnapshot {
   rarity: string | null
   category: string | null
   types: string[] | null
+  illustrator: string | null
 }
 
 /** Snapshot gravado na coleção; sempre a partir do TCGdex (servidor), nunca do cliente. */
@@ -41,6 +42,7 @@ export function detailsOf(card: CardDetail) {
   return {
     category: card.category ? categoryInPortuguese(card.category) : null,
     types: card.types.map(typeInPortuguese),
+    illustrator: card.illustrator,
   }
 }
 
@@ -80,6 +82,7 @@ export function toItem(r: CollectionItemRow, binderCount: number): CollectionIte
     rarity: r.rarity,
     category: r.category,
     types: r.types,
+    illustrator: r.illustrator,
     binderCount,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
@@ -142,7 +145,10 @@ export function createCollectionService(db: Db) {
       return { rows: rows.slice(0, limit), more: rows.length > limit }
     },
 
-    async setDetails(id: number, details: { category: string | null; types: string[] }) {
+    async setDetails(
+      id: number,
+      details: { category: string | null; types: string[]; illustrator?: string | null },
+    ) {
       await db.update(collectionItems).set(details).where(eq(collectionItems.id, id))
     },
 

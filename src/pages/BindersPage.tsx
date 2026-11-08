@@ -89,7 +89,11 @@ function BinderCover({ binder }: { binder: BinderSummary }) {
         <div className="min-w-0">
           <p className="truncate font-semibold">{binder.name}</p>
           <p className="truncate text-xs text-muted-foreground">
-            {binder.set ? binder.set.name : 'Binder livre'}
+            {binder.set
+              ? binder.set.name
+              : binder.search
+                ? `${binder.search.field === 'name' ? 'Pokémon' : 'Artista'}: ${binder.search.query}`
+                : 'Binder livre'}
             {binder.setType && ` · ${SET_TYPE_LABELS[binder.setType]}`}
             {` · ${binder.language.toUpperCase()}`}
           </p>

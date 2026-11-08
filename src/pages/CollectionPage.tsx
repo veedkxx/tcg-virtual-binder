@@ -28,6 +28,7 @@ const FILTER_LABELS: Record<(typeof FILTER_KEYS)[number], string> = {
   set: 'Coleção',
   rarity: 'Raridade',
   type: 'Tipo',
+  artist: 'Artista',
   variant: 'Variante',
   condition: 'Condição',
 }
@@ -143,7 +144,7 @@ export function CollectionPage() {
         </div>
         <div
           className={cn(
-            'grid-cols-2 gap-2 sm:grid sm:grid-cols-3 lg:grid-cols-7',
+            'grid-cols-2 gap-2 sm:grid sm:grid-cols-3 lg:grid-cols-8',
             filtersOpen ? 'grid' : 'hidden',
           )}
         >

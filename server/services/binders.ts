@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm'
-import { compareCopies, VARIANT_LABELS } from '../../shared/copies.js'
+import { and, asc, count, desc, eq, gt, inArray, sql } from 'drizzle-orm'
+import { compareCopies, variantLabel } from '../../shared/copies.js'
 import type { Language } from '../../shared/languages.js'
 import type {
   BinderDetail,
   BinderSummary,
   BinderTemplateCard,
+  BinderSearch,
   SetSummary,
 } from '../../shared/schemas.js'
 import type { SetType } from '../../shared/setTypes.js'
@@ -13,6 +14,9 @@ import type { Db } from '../db/client.js'
 import { binderSlots, binders, collectionItems, type BinderRow } from '../db/schema.js'
 import { AppError } from '../errors.js'
 import { binderCountSql, toItem } from './collection.js'
+
+/** Deslocamento temporário ao renumerar bolsos (acima de qualquer posição válida). */
+const SHIFT = 1_000_000
 
 const notFound = () => new AppError(404, 'BINDER_NOT_FOUND', 'Binder não encontrado.')
 
@@ -23,6 +27,7 @@ function toSummary(b: BinderRow, filled: number): BinderSummary {
     language: b.language as Language,
     set: b.setId ? { id: b.setId, name: b.setName ?? b.setId, logoUrl: b.setLogoUrl } : null,
     setType: b.setType ?? null,
+    search: b.search ?? null,
     filled,
     templateSize: b.template?.length ?? null,
     createdAt: b.createdAt,
@@ -130,10 +135,12 @@ export function createBindersService(db: Db) {
         name: string
         language: Language
         set?: { summary: SetSummary; type: SetType; template: BinderTemplateCard[] }
+        /** Binder por Pokémon/artista: as cartas escolhidas e as que ficaram de fora. */
+        search?: { search: BinderSearch; template: BinderTemplateCard[]; excluded: string[] }
         fill: boolean
       },
     ) {
-      const template = input.set?.template ?? null
+      const template = input.set?.template ?? input.search?.template ?? null
       const [b] = await db
         .insert(binders)
         .values({
@@ -145,6 +152,8 @@ export function createBindersService(db: Db) {
           setName: input.set?.summary.name ?? null,
           setLogoUrl: input.set?.summary.logoUrl ?? null,
           setType: input.set?.type ?? null,
+          search: input.search?.search ?? null,
+          excluded: input.search?.excluded ?? null,
           template,
         })
         .returning()
@@ -190,6 +199,67 @@ export function createBindersService(db: Db) {
     },
 
     /** A carta que o molde reserva para o bolso (só em binder de coleção). */
+    /** O binder com molde (coleção ou busca), para quem precisa das cartas e da busca de origem. */
+    async withTemplate(userId: string, binderId: string) {
+      const b = await owned(userId, binderId)
+      if (!b.template) {
+        throw new AppError(400, 'BINDER_HAS_NO_SET', 'Esse binder não tem cartas reservadas.')
+      }
+      return { ...b, template: b.template }
+    },
+
+    /**
+     * Tira uma carta do molde: o bolso some e os seguintes andam uma posição para trás, levando
+     * junto as cartas já colocadas. A carta fica como removida (não volta em "cartas novas").
+     */
+    async removeReserved(userId: string, binderId: string, position: number) {
+      const b = await this.withTemplate(userId, binderId)
+      const removed = b.template[position]
+      if (!removed) {
+        throw new AppError(400, 'POSITION_OUT_OF_SET', 'Esse bolso não existe neste binder.')
+      }
+      const template = b.template.filter((_, i) => i !== position)
+      const excluded = [...new Set([...(b.excluded ?? []), removed.id])]
+
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(binderSlots)
+          .where(and(eq(binderSlots.binderId, b.id), eq(binderSlots.position, position)))
+        // Em duas etapas: subtrair 1 direto bateria na chave (binder, posição) no meio do caminho.
+        const after = and(eq(binderSlots.binderId, b.id), gt(binderSlots.position, position))
+        await tx
+          .update(binderSlots)
+          .set({ position: sql`${binderSlots.position} + ${SHIFT}` })
+          .where(after)
+        await tx
+          .update(binderSlots)
+          .set({ position: sql`${binderSlots.position} - ${SHIFT + 1}` })
+          .where(and(eq(binderSlots.binderId, b.id), gt(binderSlots.position, SHIFT)))
+        await tx
+          .update(binders)
+          .set({ template, excluded, updatedAt: sql`CURRENT_TIMESTAMP` })
+          .where(eq(binders.id, b.id))
+      })
+      return { removed, templateSize: template.length }
+    },
+
+    /** Acrescenta cartas no fim do molde (cartas novas da busca); deixam de contar como removidas. */
+    async appendCards(userId: string, binderId: string, cards: BinderTemplateCard[]) {
+      const b = await this.withTemplate(userId, binderId)
+      const present = new Set(b.template.map((c) => c.id))
+      const added = cards.filter((c) => !present.has(c.id))
+      const ids = new Set(added.map((c) => c.id))
+      await db
+        .update(binders)
+        .set({
+          template: [...b.template, ...added],
+          excluded: (b.excluded ?? []).filter((id) => !ids.has(id)),
+          updatedAt: sql`CURRENT_TIMESTAMP`,
+        })
+        .where(eq(binders.id, b.id))
+      return added.length
+    },
+
     async reservedCard(userId: string, binderId: string, position: number) {
       const b = await owned(userId, binderId)
       if (!b.template) {
@@ -226,7 +296,7 @@ export function createBindersService(db: Db) {
           throw new AppError(
             400,
             'WRONG_VARIANT_FOR_POCKET',
-            `Esse bolso é da versão ${VARIANT_LABELS[reserved.variant]} de ${reserved.name}.`,
+            `Esse bolso é da versão ${variantLabel(reserved.variant)} de ${reserved.name}.`,
           )
         }
       }

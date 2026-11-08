@@ -10,10 +10,14 @@ import {
   CollectionResponseSchema,
   CompleteCollectionResponseSchema,
   FillBinderResponseSchema,
+  IllustratorsResponseSchema,
+  NewBinderCardsResponseSchema,
+  SearchCandidatesResponseSchema,
   MeResponseSchema,
   SetListResponseSchema,
   type AddToCollectionInput,
   type AddToPocketInput,
+  type BinderSearch,
   type UpdateCollectionItemInput,
   type CreateBinderInput,
 } from '../../shared/schemas'
@@ -120,4 +124,26 @@ export const api = {
     request(`/api/binders/${encodeURIComponent(id)}/slots/${position}`, z.undefined(), {
       method: 'DELETE',
     }),
+
+  searchCandidates: (search: BinderSearch, lang: Language) =>
+    request(`/api/search/candidates?${qs({ ...search, lang })}`, SearchCandidatesResponseSchema),
+
+  listIllustrators: (lang: Language) =>
+    request(`/api/search/illustrators?${qs({ lang })}`, IllustratorsResponseSchema),
+
+  newBinderCards: (id: string) =>
+    request(`/api/binders/${encodeURIComponent(id)}/new-cards`, NewBinderCardsResponseSchema),
+
+  addBinderCards: (id: string, cardIds: string[]) =>
+    request(`/api/binders/${encodeURIComponent(id)}/cards`, z.object({ added: z.number() }), {
+      method: 'POST',
+      body: { cardIds },
+    }),
+
+  removeReserved: (id: string, position: number) =>
+    request(
+      `/api/binders/${encodeURIComponent(id)}/template/${position}`,
+      z.object({ templateSize: z.number() }).passthrough(),
+      { method: 'DELETE' },
+    ),
 }
