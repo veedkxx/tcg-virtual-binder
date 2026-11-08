@@ -13,9 +13,11 @@ import { createCollectionRouter } from './routes/collection.js'
 import { createImagesRouter } from './routes/images.js'
 import { createSearchRouter } from './routes/search.js'
 import { createSetsRouter } from './routes/sets.js'
+import { createWishlistRouter } from './routes/wishlist.js'
 import { createAuthService } from './services/auth.js'
 import { createBindersService } from './services/binders.js'
 import { createCollectionService } from './services/collection.js'
+import { createWishlistService } from './services/wishlist.js'
 import type { GoogleProvider } from './services/google.js'
 import type { CardsProvider } from './services/tcgdex.js'
 
@@ -91,7 +93,17 @@ export function createApp(deps: {
     '/api/collection',
     session,
     requireAuth,
-    createCollectionRouter({ collection: createCollectionService(deps.db), cards: deps.cards }),
+    createCollectionRouter({
+      collection: createCollectionService(deps.db),
+      wishlist: createWishlistService(deps.db),
+      cards: deps.cards,
+    }),
+  )
+  app.use(
+    '/api/wishlist',
+    session,
+    requireAuth,
+    createWishlistRouter({ wishlist: createWishlistService(deps.db), cards: deps.cards }),
   )
   app.use(
     '/api/binders',
@@ -100,6 +112,7 @@ export function createApp(deps: {
     createBindersRouter({
       binders: createBindersService(deps.db),
       collection: createCollectionService(deps.db),
+      wishlist: createWishlistService(deps.db),
       cards: deps.cards,
     }),
   )

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, asc, count, desc, eq, gt, inArray, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, gte, inArray, lte, sql } from 'drizzle-orm'
 import { compareCopies, variantLabel } from '../../shared/copies.js'
 import type { Language } from '../../shared/languages.js'
 import type {
@@ -9,14 +9,43 @@ import type {
   BinderSearch,
   SetSummary,
 } from '../../shared/schemas.js'
+import type { BinderColor, OrganizeBy } from '../../shared/binderStyle.js'
+import { POCKETS_PER_PAGE } from '../../shared/schemas.js'
 import type { SetType } from '../../shared/setTypes.js'
 import type { Db } from '../db/client.js'
-import { binderSlots, binders, collectionItems, type BinderRow } from '../db/schema.js'
+import {
+  binderSlots,
+  binders,
+  collectionItems,
+  type BinderRow,
+  type CollectionItemRow,
+} from '../db/schema.js'
 import { AppError } from '../errors.js'
 import { binderCountSql, toItem } from './collection.js'
 
 /** Deslocamento temporário ao renumerar bolsos (acima de qualquer posição válida). */
 const SHIFT = 1_000_000
+
+const byNumber = (a: string | null, b: string | null) =>
+  (a ?? '').localeCompare(b ?? '', 'pt', { numeric: true })
+const text = (a: string | null | undefined, b: string | null | undefined) =>
+  // Sem valor vai para o fim.
+  Number(!a) - Number(!b) || (a ?? '').localeCompare(b ?? '', 'pt')
+
+function organizeCompare(by: OrganizeBy, a: CollectionItemRow, b: CollectionItemRow) {
+  switch (by) {
+    case 'number':
+      return text(a.setName, b.setName) || byNumber(a.localId, b.localId)
+    case 'name':
+      return text(a.name, b.name) || byNumber(a.localId, b.localId)
+    case 'type':
+      return text(a.types?.[0] ?? a.category, b.types?.[0] ?? b.category) || text(a.name, b.name)
+    case 'artist':
+      return text(a.illustrator, b.illustrator) || text(a.name, b.name)
+    case 'recent':
+      return b.createdAt.localeCompare(a.createdAt) || b.id - a.id
+  }
+}
 
 const notFound = () => new AppError(404, 'BINDER_NOT_FOUND', 'Binder não encontrado.')
 
@@ -28,6 +57,8 @@ function toSummary(b: BinderRow, filled: number): BinderSummary {
     set: b.setId ? { id: b.setId, name: b.setName ?? b.setId, logoUrl: b.setLogoUrl } : null,
     setType: b.setType ?? null,
     search: b.search ?? null,
+    color: b.color ?? null,
+    coverImageUrl: b.coverImageUrl ?? null,
     filled,
     templateSize: b.template?.length ?? null,
     createdAt: b.createdAt,
@@ -37,6 +68,19 @@ function toSummary(b: BinderRow, filled: number): BinderSummary {
 
 /** Toda operação é escopada por `userId`, como a coleção. */
 export function createBindersService(db: Db) {
+  /** Mover, páginas e organizar: só no binder livre (binders de coleção seguem o molde). */
+  async function blankOnly(userId: string, binderId: string) {
+    const b = await owned(userId, binderId)
+    if (b.template) {
+      throw new AppError(
+        400,
+        'ONLY_BLANK_BINDER',
+        'Isso só vale para binders livres; binders de coleção seguem a ordem da coleção.',
+      )
+    }
+    return b
+  }
+
   async function owned(userId: string, binderId: string) {
     const [b] = await db
       .select()
@@ -185,12 +229,102 @@ export function createBindersService(db: Db) {
       }
     },
 
-    async rename(userId: string, binderId: string, name: string) {
+    /** Nome, cor e capa. */
+    async update(
+      userId: string,
+      binderId: string,
+      patch: { name?: string; color?: BinderColor | null; coverImageUrl?: string | null },
+    ) {
       await owned(userId, binderId)
       await db
         .update(binders)
-        .set({ name, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .set({ ...patch, updatedAt: sql`CURRENT_TIMESTAMP` })
         .where(eq(binders.id, binderId))
+    },
+
+    /** Move a carta de um bolso para outro; se o destino estiver ocupado, as duas trocam. */
+    async move(userId: string, binderId: string, from: number, to: number) {
+      const b = await blankOnly(userId, binderId)
+      if (from === to) return
+      const at = (p: number) => and(eq(binderSlots.binderId, b.id), eq(binderSlots.position, p))
+      await db.transaction(async (tx) => {
+        const [source] = await tx.select().from(binderSlots).where(at(from))
+        if (!source) throw new AppError(404, 'POCKET_EMPTY', 'Esse bolso está vazio.')
+        // A origem passa por uma posição temporária para a troca não bater na chave (binder, posição).
+        await tx.update(binderSlots).set({ position: SHIFT }).where(at(from))
+        await tx.update(binderSlots).set({ position: from }).where(at(to))
+        await tx.update(binderSlots).set({ position: to }).where(at(SHIFT))
+        await tx
+          .update(binders)
+          .set({ updatedAt: sql`CURRENT_TIMESTAMP` })
+          .where(eq(binders.id, b.id))
+      })
+    },
+
+    /**
+     * Insere uma página em branco antes de `page` (os bolsos dali em diante andam 9 para frente)
+     * ou remove a página `page` (as cartas dela saem do binder e as seguintes voltam 9).
+     */
+    async page(userId: string, binderId: string, page: number, action: 'insert' | 'remove') {
+      const b = await blankOnly(userId, binderId)
+      const first = page * POCKETS_PER_PAGE
+      const last = first + POCKETS_PER_PAGE - 1
+      const inBinder = eq(binderSlots.binderId, b.id)
+      await db.transaction(async (tx) => {
+        if (action === 'remove') {
+          await tx
+            .delete(binderSlots)
+            .where(and(inBinder, gte(binderSlots.position, first), lte(binderSlots.position, last)))
+        }
+        const moving =
+          action === 'insert' ? gte(binderSlots.position, first) : gt(binderSlots.position, last)
+        const delta = action === 'insert' ? POCKETS_PER_PAGE : -POCKETS_PER_PAGE
+        // Em duas etapas, como em removeReserved: deslocar direto bateria na chave no meio do caminho.
+        await tx
+          .update(binderSlots)
+          .set({ position: sql`${binderSlots.position} + ${SHIFT}` })
+          .where(and(inBinder, moving))
+        await tx
+          .update(binderSlots)
+          .set({ position: sql`${binderSlots.position} - ${SHIFT - delta}` })
+          .where(and(inBinder, gte(binderSlots.position, SHIFT)))
+        await tx
+          .update(binders)
+          .set({ updatedAt: sql`CURRENT_TIMESTAMP` })
+          .where(eq(binders.id, b.id))
+      })
+    },
+
+    /** Reordena as cartas do binder livre pelo critério, sem buracos (bolsos 0, 1, 2…). */
+    async organize(userId: string, binderId: string, by: OrganizeBy) {
+      const b = await blankOnly(userId, binderId)
+      const rows = await db
+        .select({ position: binderSlots.position, item: collectionItems })
+        .from(binderSlots)
+        .innerJoin(collectionItems, eq(collectionItems.id, binderSlots.collectionItemId))
+        .where(eq(binderSlots.binderId, b.id))
+      const sorted = [...rows].sort(
+        (x, y) => organizeCompare(by, x.item, y.item) || x.position - y.position,
+      )
+      await db.transaction(async (tx) => {
+        await tx.delete(binderSlots).where(eq(binderSlots.binderId, b.id))
+        if (sorted.length > 0) {
+          await tx
+            .insert(binderSlots)
+            .values(
+              sorted.map((r, position) => ({
+                binderId: b.id,
+                position,
+                collectionItemId: r.item.id,
+              })),
+            )
+        }
+        await tx
+          .update(binders)
+          .set({ updatedAt: sql`CURRENT_TIMESTAMP` })
+          .where(eq(binders.id, b.id))
+      })
+      return sorted.length
     },
 
     async remove(userId: string, binderId: string) {

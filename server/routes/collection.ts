@@ -15,6 +15,7 @@ import {
   type CollectionService,
 } from '../services/collection.js'
 import type { CardsProvider } from '../services/tcgdex.js'
+import type { WishlistService } from '../services/wishlist.js'
 
 const COMPLETE_BATCH = 40
 
@@ -24,9 +25,10 @@ const notInCollection = () =>
 // Este router é montado atrás de `requireAuth`; todos os handlers usam o usuário da sessão.
 export function createCollectionRouter(deps: {
   collection: CollectionService
+  wishlist: WishlistService
   cards: CardsProvider
 }) {
-  const { collection, cards } = deps
+  const { collection, wishlist, cards } = deps
   const router = Router()
 
   // Dados do usuário: nunca cachear.
@@ -77,7 +79,13 @@ export function createCollectionRouter(deps: {
       { variant: resolveVariant(card, input.variant), condition: input.condition },
       input.quantity,
     )
-    res.status(201).json(item)
+    // A cópia nova risca da lista de desejos o que ela atende.
+    const wishlistRemoved = await wishlist.fulfill(userId, {
+      cardId: item.cardId,
+      language: item.language,
+      variant: item.variant,
+    })
+    res.status(201).json({ ...item, wishlistRemoved })
   })
 
   router.patch('/:id', async (req, res) => {

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Search, SlidersHorizontal, X } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { CardImage } from '@/components/CardImage'
+import { CollectionTabs } from '@/components/CollectionTabs'
 import { CopyBadges, LanguageBadge } from '@/components/CopyControls'
 import { QuantityStepper } from '@/components/QuantityStepper'
 import { Button } from '@/components/ui/button'
@@ -108,6 +109,7 @@ export function CollectionPage() {
 
   return (
     <div className="space-y-5">
+      <CollectionTabs />
       <div>
         <h1 className="text-2xl font-bold">Minha coleção</h1>
         <p className="text-sm text-muted-foreground">

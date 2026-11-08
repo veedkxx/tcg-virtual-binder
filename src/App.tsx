@@ -13,12 +13,14 @@ const pages = {
   card: () => import('@/pages/CardPage').then((m) => ({ default: m.CardPage })),
   login: () => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })),
   collection: () => import('@/pages/CollectionPage').then((m) => ({ default: m.CollectionPage })),
+  wishlist: () => import('@/pages/WishlistPage').then((m) => ({ default: m.WishlistPage })),
   binders: () => import('@/pages/BindersPage').then((m) => ({ default: m.BindersPage })),
   binder: () => import('@/pages/BinderPage').then((m) => ({ default: m.BinderPage })),
 }
 const CardPage = lazy(pages.card)
 const LoginPage = lazy(pages.login)
 const CollectionPage = lazy(pages.collection)
+const WishlistPage = lazy(pages.wishlist)
 const BindersPage = lazy(pages.binders)
 const BinderPage = lazy(pages.binder)
 
@@ -58,6 +60,7 @@ export function App() {
             <Route path="login" element={<LoginPage />} />
             <Route element={<RequireAuth />}>
               <Route path="collection" element={<CollectionPage />} />
+              <Route path="wishlist" element={<WishlistPage />} />
               <Route path="binders" element={<BindersPage />} />
               <Route path="binders/:id" element={<BinderPage />} />
             </Route>

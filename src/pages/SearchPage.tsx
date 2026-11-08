@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useCardSearch } from '@/hooks/useCards'
 import { useCollection } from '@/hooks/useCollection'
+import { useWishlist } from '@/hooks/useWishlist'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { LANGUAGE_LABELS } from '../../shared/languages'
 import { useUiStore } from '@/store/ui'
@@ -21,6 +22,11 @@ export function SearchPage() {
 
   const search = useCardSearch(debounced, page)
   const collection = useCollection()
+  const wishlist = useWishlist()
+  const wishedIds = useMemo(
+    () => new Set(wishlist.data?.items.map((w) => w.cardId)),
+    [wishlist.data],
+  )
 
   // Soma todas as cópias (variantes e condições) da carta no idioma da busca.
   const language = useUiStore((s) => s.language)
@@ -73,7 +79,12 @@ export function SearchPage() {
           <div className={search.isPlaceholderData ? 'opacity-60 transition-opacity' : undefined}>
             <Grid>
               {search.data.items.map((card) => (
-                <CardTile key={card.id} card={card} owned={ownedById.get(card.id)} />
+                <CardTile
+                  key={card.id}
+                  card={card}
+                  owned={ownedById.get(card.id)}
+                  wished={wishedIds.has(card.id)}
+                />
               ))}
             </Grid>
           </div>

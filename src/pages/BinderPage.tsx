@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
+  ArrowDownWideNarrow,
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
-  Pencil,
+  FileMinus2,
+  FilePlus2,
   Search as SearchIcon,
   Sparkles,
   Trash2,
@@ -11,8 +13,10 @@ import {
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { compareCopies, type Variant } from '../../shared/copies'
 import type { Language } from '../../shared/languages'
+import { ORGANIZE_BY, ORGANIZE_LABELS, type OrganizeBy } from '../../shared/binderStyle'
 import { SET_TYPE_LABELS } from '../../shared/setTypes'
 import { POCKETS_PER_PAGE, type BinderDetail, type CollectionItem } from '../../shared/schemas'
+import { CustomizeBinderButton } from '@/components/binder/CustomizeBinderDialog'
 import { NewCardsDialog } from '@/components/binder/NewCardsDialog'
 import { Pocket, type PocketState } from '@/components/binder/Pocket'
 import { PocketDialog, type PocketDialogTarget } from '@/components/binder/PocketDialog'
@@ -36,17 +40,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   useBinder,
   useDeleteBinder,
   useFillBinder,
-  useRenameBinder,
+  useBinderLayout,
   useRemoveReserved,
   useSlotMutations,
 } from '@/hooks/useBinders'
 import { useCollection } from '@/hooks/useCollection'
+import { pageBackground } from '@/lib/binderColors'
 import { proxied } from '@/lib/images'
 import { cn } from '@/lib/utils'
 
@@ -234,7 +238,27 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
     return card ? { kind: 'reserved', card, owned: ownedFor(card) } : { kind: 'none' }
   }
 
+  // Binder livre: mover e trocar cartas (arrastar no desktop; "Mover" + toque no destino no celular).
+  const blank = !binder.template
+  const { move, page: pageOp, organize } = useBinderLayout(binder.id)
+  const [moving, setMoving] = useState<number | null>(null)
+  const [dragOver, setDragOver] = useState<number | null>(null)
+  useEffect(() => {
+    if (moving === null) return
+    const cancel = (e: KeyboardEvent) => e.key === 'Escape' && setMoving(null)
+    window.addEventListener('keydown', cancel)
+    return () => window.removeEventListener('keydown', cancel)
+  }, [moving])
+  const moveTo = (from: number, to: number) => {
+    if (from !== to) move.mutate({ from, to })
+  }
+
   const onPocketClick = (position: number) => {
+    if (moving !== null) {
+      moveTo(moving, position)
+      setMoving(null)
+      return
+    }
     const state = pocketState(position)
     if (state.kind === 'filled') setZoom({ kind: 'filled', position, item: state.item })
     else if (state.kind === 'free') setPicker(position)
@@ -303,7 +327,13 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
               <SearchIcon /> Buscar cartas novas
             </Button>
           )}
-          <RenameButton binder={binder} />
+          {blank && (
+            <OrganizeButton
+              disabled={organize.isPending || binder.filled === 0}
+              onOrganize={(by) => organize.mutate(by)}
+            />
+          )}
+          <CustomizeBinderButton binder={binder} />
           <DeleteButton binder={binder} />
         </div>
       </div>
@@ -345,6 +375,18 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
         </div>
       )}
 
+      {moving !== null && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/50 bg-primary/10 px-3 py-2 text-sm">
+          <span>
+            Movendo a carta de {pocketLabel(moving).toLowerCase()}: toque no bolso de destino (pode
+            trocar de página). Bolso ocupado troca as duas de lugar.
+          </span>
+          <Button size="sm" variant="ghost" onClick={() => setMoving(null)}>
+            Cancelar
+          </Button>
+        </div>
+      )}
+
       <div
         className="touch-pan-y select-none"
         onPointerDown={onPointerDown}
@@ -364,27 +406,67 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
               <section
                 key={page}
                 aria-label={`Página ${page + 1}`}
-                className="rounded-2xl border bg-gradient-to-br from-muted/60 to-muted/20 p-2.5 shadow-inner sm:p-4"
+                className={cn(
+                  'rounded-2xl border bg-gradient-to-br p-2.5 shadow-inner sm:p-4',
+                  pageBackground(binder.color),
+                )}
               >
                 <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   {Array.from({ length: POCKETS_PER_PAGE }, (_, i) => {
                     const position = page * POCKETS_PER_PAGE + i
+                    const state = pocketState(position)
                     return (
-                      <Pocket
+                      <div
                         key={position}
-                        state={pocketState(position)}
-                        binderLanguage={binder.language}
-                        dimmed={dimmed(pocketState(position))}
-                        onClick={() => onPocketClick(position)}
-                        onQuickAdd={() => addNew.mutate({ position })}
-                        busy={addNew.isPending && addNew.variables?.position === position}
-                      />
+                        // Arrastar e soltar (desktop) só no binder livre.
+                        draggable={blank && state.kind === 'filled'}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', String(position))
+                          e.dataTransfer.effectAllowed = 'move'
+                        }}
+                        onDragOver={(e) => {
+                          if (!blank) return
+                          e.preventDefault()
+                          setDragOver(position)
+                        }}
+                        onDragLeave={() => setDragOver((p) => (p === position ? null : p))}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          setDragOver(null)
+                          const from = Number(e.dataTransfer.getData('text/plain'))
+                          if (blank && Number.isInteger(from)) moveTo(from, position)
+                        }}
+                        className={cn(
+                          'rounded-lg transition-shadow',
+                          dragOver === position && 'ring-2 ring-primary ring-offset-2',
+                          moving === position && 'ring-2 ring-primary ring-offset-2 animate-pulse',
+                        )}
+                      >
+                        <Pocket
+                          state={state}
+                          binderLanguage={binder.language}
+                          dimmed={dimmed(state)}
+                          onClick={() => onPocketClick(position)}
+                          onQuickAdd={() => addNew.mutate({ position })}
+                          busy={addNew.isPending && addNew.variables?.position === position}
+                        />
+                      </div>
                     )
                   })}
                 </div>
-                <p className="mt-2 text-center text-xs text-muted-foreground tabular-nums">
-                  {page + 1}
-                </p>
+                <div className="mt-2 flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                  <span className="tabular-nums">{page + 1}</span>
+                  {blank && (
+                    <PageTools
+                      hasCards={binder.slots.some(
+                        (s) => Math.floor(s.position / POCKETS_PER_PAGE) === page,
+                      )}
+                      busy={pageOp.isPending}
+                      onInsert={() => pageOp.mutate({ page, action: 'insert' })}
+                      onRemove={() => pageOp.mutate({ page, action: 'remove' })}
+                    />
+                  )}
+                </div>
               </section>
             ) : (
               <div key={page} className="rounded-2xl border border-dashed" aria-hidden />
@@ -473,6 +555,14 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
             : undefined
         }
         onRemove={(position) => clear.mutate({ position })}
+        onMove={
+          blank
+            ? (position) => {
+                setZoom(null)
+                setMoving(position)
+              }
+            : undefined
+        }
         onRemoveReserved={
           binder.template
             ? (position) =>
@@ -489,58 +579,6 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
         binderLanguage={binder.language}
       />
     </div>
-  )
-}
-
-function RenameButton({ binder }: { binder: BinderDetail }) {
-  const rename = useRenameBinder(binder.id)
-  const [open, setOpen] = useState(false)
-  const [name, setName] = useState(binder.name)
-
-  return (
-    <>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => {
-          setName(binder.name)
-          setOpen(true)
-        }}
-      >
-        <Pencil /> Renomear
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <form
-            className="grid gap-4"
-            onSubmit={(e) => {
-              e.preventDefault()
-              if (!name.trim()) return
-              rename.mutate(name.trim(), { onSuccess: () => setOpen(false) })
-            }}
-          >
-            <DialogHeader>
-              <DialogTitle>Renomear binder</DialogTitle>
-            </DialogHeader>
-            <Input
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={60}
-              aria-label="Nome do binder"
-            />
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={!name.trim() || rename.isPending}>
-                Salvar
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </>
   )
 }
 
@@ -601,5 +639,117 @@ function ChipGroup<T extends string>(props: {
         </button>
       ))}
     </div>
+  )
+}
+
+/** Inserir página em branco antes desta ou remover a página (pede confirmação se tiver cartas). */
+function PageTools(props: {
+  hasCards: boolean
+  busy: boolean
+  onInsert: () => void
+  onRemove: () => void
+}) {
+  const [confirming, setConfirming] = useState(false)
+  if (confirming) {
+    return (
+      <span className="flex items-center gap-1">
+        <span>Remover página com cartas?</span>
+        <Button
+          size="sm"
+          variant="destructive"
+          className="h-6 px-2 text-xs"
+          onClick={() => {
+            props.onRemove()
+            setConfirming(false)
+          }}
+        >
+          Remover
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-6 px-2 text-xs"
+          onClick={() => setConfirming(false)}
+        >
+          Cancelar
+        </Button>
+      </span>
+    )
+  }
+  return (
+    <span className="flex items-center">
+      <Button
+        size="icon"
+        variant="ghost"
+        className="size-6"
+        disabled={props.busy}
+        onClick={props.onInsert}
+        title="Inserir página em branco antes desta"
+        aria-label="Inserir página em branco antes desta"
+      >
+        <FilePlus2 className="size-3.5" />
+      </Button>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="size-6"
+        disabled={props.busy}
+        onClick={() => (props.hasCards ? setConfirming(true) : props.onRemove())}
+        title="Remover esta página"
+        aria-label="Remover esta página"
+      >
+        <FileMinus2 className="size-3.5" />
+      </Button>
+    </span>
+  )
+}
+
+/** Organizar automaticamente (binder livre): reordena as cartas pelo critério, sem buracos. */
+function OrganizeButton(props: { disabled: boolean; onOrganize: (by: OrganizeBy) => void }) {
+  const [open, setOpen] = useState(false)
+  const [by, setBy] = useState<OrganizeBy>('number')
+  return (
+    <>
+      <Button variant="outline" size="sm" disabled={props.disabled} onClick={() => setOpen(true)}>
+        <ArrowDownWideNarrow /> Organizar
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Organizar automaticamente</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            As cartas são reordenadas desde o primeiro bolso, sem bolsos vazios entre elas.
+          </p>
+          <div className="grid gap-2" role="radiogroup" aria-label="Organizar por">
+            {ORGANIZE_BY.map((o) => (
+              <label key={o} className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="organize-by"
+                  checked={by === o}
+                  onChange={() => setBy(o)}
+                  className="size-4 accent-primary"
+                />
+                {ORGANIZE_LABELS[o]}
+              </label>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                props.onOrganize(by)
+                setOpen(false)
+              }}
+            >
+              Organizar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

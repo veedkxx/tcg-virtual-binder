@@ -13,6 +13,7 @@ import {
   VariantSelect,
 } from '@/components/CopyControls'
 import { QuantityStepper } from '@/components/QuantityStepper'
+import { WishButton } from '@/components/WishButton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -149,6 +150,17 @@ export function CardPage() {
               )}
             </CardContent>
           </Card>
+
+          {user && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Lista de desejos</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <WishButton key={`${c.id}-${language}`} card={c} />
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

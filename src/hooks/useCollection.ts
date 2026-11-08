@@ -50,6 +50,8 @@ function useInvalidateCollection() {
     void qc.invalidateQueries({ queryKey: ['collection'] })
     // Bolsos mostram a cópia; mudar ou remover a cópia muda os binders.
     void qc.invalidateQueries({ queryKey: ['binders'] })
+    // Uma cópia nova pode riscar desejos da lista.
+    void qc.invalidateQueries({ queryKey: ['wishlist'] })
   }
 }
 
@@ -70,7 +72,10 @@ export function useAddToCollection() {
       language?: Language
     }) => api.addToCollection({ ...input, language: chosen ?? language }),
     onSuccess: (item) => {
-      toast.success(`${item.name} adicionada (agora você tem ${item.quantity} desta cópia).`)
+      toast.success(
+        `${item.name} adicionada (agora você tem ${item.quantity} desta cópia).` +
+          (item.wishlistRemoved ? ' Riscada da lista de desejos.' : ''),
+      )
     },
     onError: (e) => toast.error(errorMessage(e)),
     onSettled: invalidate,

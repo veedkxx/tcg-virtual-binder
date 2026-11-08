@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeftRight, ExternalLink, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeftRight, ExternalLink, Heart, Move, Plus, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   DEFAULT_CONDITION,
@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useCard } from '@/hooks/useCards'
 import { useUpdateCollectionItem } from '@/hooks/useCollection'
+import { useAddToWishlist } from '@/hooks/useWishlist'
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,8 @@ interface Props {
   /** Só em binder livre: abre o seletor para trocar a carta do bolso. */
   onSwap?: (position: number) => void
   onRemove: (position: number) => void
+  /** Binder livre: escolher outro bolso para esta carta. */
+  onMove?: (position: number) => void
   /** Binder com molde: tira a carta do binder (o bolso some e os seguintes andam para trás). */
   onRemoveReserved?: (position: number) => void
   /** Carta que falta: adiciona à coleção e já coloca no bolso. */
@@ -57,12 +60,14 @@ export function PocketDialog({
   label,
   onSwap,
   onRemove,
+  onMove,
   onRemoveReserved,
   onAddMissing,
   adding,
   binderLanguage,
 }: Props) {
   const open = target !== null
+  const wish = useAddToWishlist()
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -99,6 +104,11 @@ export function PocketDialog({
               <DialogFooter className="sm:justify-start">
                 {target.kind === 'filled' ? (
                   <>
+                    {onMove && (
+                      <Button variant="outline" onClick={() => onMove(target.position)}>
+                        <Move /> Mover
+                      </Button>
+                    )}
                     {onSwap && (
                       <Button variant="outline" onClick={() => onSwap(target.position)}>
                         <ArrowLeftRight /> Trocar
@@ -120,11 +130,27 @@ export function PocketDialog({
                     </Button>
                   </>
                 ) : (
-                  <Button asChild variant="ghost">
-                    <Link to={`/cards/${encodeURIComponent(target.card.id)}`}>
-                      <ExternalLink /> Ver carta
-                    </Link>
-                  </Button>
+                  <>
+                    <Button
+                      variant="ghost"
+                      disabled={wish.isPending}
+                      onClick={() =>
+                        wish.mutate({
+                          cardId: target.card.id,
+                          lang: binderLanguage,
+                          language: null,
+                          variant: target.card.variant ?? null,
+                        })
+                      }
+                    >
+                      <Heart /> Lista de desejos
+                    </Button>
+                    <Button asChild variant="ghost">
+                      <Link to={`/cards/${encodeURIComponent(target.card.id)}`}>
+                        <ExternalLink /> Ver carta
+                      </Link>
+                    </Button>
+                  </>
                 )}
               </DialogFooter>
 
