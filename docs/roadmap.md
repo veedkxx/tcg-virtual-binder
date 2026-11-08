@@ -13,21 +13,30 @@
 
 ## Próximas sprints
 
-### Sprint 7: binders, organização e lista de desejos
+### Sprint 7: binders personalizados
 
+A ideia do projeto é dar o máximo de liberdade para o usuário montar o que quiser.
+
+- Binder a partir de uma busca: por Pokémon (ex.: todas as cartas de Pikachu) ou por artista. O usuário
+  desmarca as cartas que não quer antes de criar.
+- Remover cartas (bolsos) de qualquer binder de coleção já criado.
+- Artista (ilustrador) nos filtros e na ordenação da coleção e dos binders.
 - Grand Master Set (reverse Poké Ball/Master Ball, cosmos, carimbos).
+
+### Sprint 8: organização e lista de desejos
+
 - Arrastar e soltar entre bolsos e páginas, inserir/remover página, organizar automaticamente,
   capa e cor.
 - Lista de desejos.
 
-### Sprint 8: estatísticas e dados
+### Sprint 9: estatísticas e dados
 
 - Estatísticas da coleção.
 - Importar e exportar CSV.
 - Preços: **em stand-by** (sem fonte legítima em reais; EUR/USD não interessa por enquanto). Opção
   simples: botão "Ver na Liga Pokémon" na página da carta. Ver `docs/pesquisa-apis.md`.
 
-### Sprint 9: scanner
+### Sprint 10: scanner
 
 - Câmera lendo o número da carta e o símbolo da coleção.
 
