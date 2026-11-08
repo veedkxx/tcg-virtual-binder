@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { CONDITIONS, DEFAULT_CONDITION, VARIANT_PATTERN } from './copies.js'
 import { DEFAULT_LANGUAGE, ENABLED_LANGUAGES } from './languages.js'
+import { BINDER_COLORS, ORGANIZE_BY } from './binderStyle.js'
 import { SET_TYPES } from './setTypes.js'
 
 export const MAX_QUANTITY = 9999
@@ -101,6 +102,8 @@ export const CollectionItemSchema = z.object({
   binderCount: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /** Só ao adicionar: quantos desejos a cópia nova riscou da lista de desejos. */
+  wishlistRemoved: z.number().int().optional(),
 })
 export type CollectionItem = z.infer<typeof CollectionItemSchema>
 
@@ -172,6 +175,9 @@ export const BinderSummarySchema = z.object({
   setType: SetTypeSchema.nullable(),
   /** Busca de origem (binder por Pokémon ou artista); null nos outros. */
   search: BinderSearchSchema.nullable(),
+  /** Aparência: cor e imagem de capa (uma carta do binder); null = padrão. */
+  color: z.enum(BINDER_COLORS).nullable(),
+  coverImageUrl: z.string().nullable(),
   /** Bolsos ocupados. */
   filled: z.number().int(),
   /** Bolsos reservados pela coleção de origem (null em binder em branco). */
@@ -277,7 +283,22 @@ export const CreateBinderSchema = z
   .refine((b) => !(b.setId && b.search), { message: 'Use setId ou search, não os dois.' })
 export type CreateBinderInput = z.input<typeof CreateBinderSchema>
 
-export const RenameBinderSchema = z.object({ name: BinderNameSchema })
+/** Nome, cor e capa; `null` volta ao padrão. Pelo menos um campo. */
+export const UpdateBinderSchema = z
+  .object({
+    name: BinderNameSchema.optional(),
+    color: z.enum(BINDER_COLORS).nullable().optional(),
+    coverImageUrl: z
+      .string()
+      .max(300)
+      .regex(/^https:\/\/assets\.tcgdex\.net\//)
+      .nullable()
+      .optional(),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), {
+    message: 'Informe name, color ou coverImageUrl.',
+  })
+export type UpdateBinderInput = z.input<typeof UpdateBinderSchema>
 
 export const BinderPositionSchema = z.coerce.number().int().min(0).max(MAX_BINDER_POSITION)
 
@@ -294,3 +315,49 @@ export type AddToPocketInput = z.input<typeof AddToPocketSchema>
 export const PutSlotSchema = z.object({
   collectionItemId: z.number().int().positive(),
 })
+
+// ---------- Binder livre: mover, páginas e organizar ----------
+
+export const MoveSlotSchema = z.object({
+  from: BinderPositionSchema,
+  to: BinderPositionSchema,
+})
+
+export const PageActionSchema = z.object({
+  page: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_BINDER_POSITION / POCKETS_PER_PAGE),
+  action: z.enum(['insert', 'remove']),
+})
+
+export const OrganizeBinderSchema = z.object({ by: z.enum(ORGANIZE_BY) })
+
+// ---------- Lista de desejos ----------
+
+/** `language`/`variant` null = qualquer idioma/versão serve. */
+export const WishlistItemSchema = z.object({
+  id: z.number().int(),
+  cardId: z.string(),
+  language: LanguageSchema.nullable(),
+  variant: VariantSchema.nullable(),
+  name: z.string(),
+  imageUrl: z.string().nullable(),
+  setName: z.string().nullable(),
+  localId: z.string().nullable(),
+  createdAt: z.string(),
+})
+export type WishlistItem = z.infer<typeof WishlistItemSchema>
+
+export const WishlistResponseSchema = z.object({ items: z.array(WishlistItemSchema) })
+
+export const AddToWishlistSchema = z.object({
+  cardId: z.string().trim().min(1).max(100),
+  /** Idioma usado para buscar nome e imagem da carta. */
+  lang: LanguageSchema.default(DEFAULT_LANGUAGE),
+  /** Desejo específico (opcional): só este idioma e/ou esta versão. */
+  language: LanguageSchema.nullable().default(null),
+  variant: VariantSchema.nullable().default(null),
+})
+export type AddToWishlistInput = z.input<typeof AddToWishlistSchema>

@@ -11,7 +11,14 @@ import type { Language } from '../shared/languages.js'
 import type { BinderDetail, BinderSummary, CardDetail, SetDetail } from '../shared/schemas.js'
 import { createApp } from './app.js'
 import { createDb } from './db/client.js'
-import { binderSlots, binders, collectionItems, sessions, users } from './db/schema.js'
+import {
+  binderSlots,
+  binders,
+  collectionItems,
+  sessions,
+  users,
+  wishlistItems,
+} from './db/schema.js'
 import { AppError } from './errors.js'
 import { safeReturnTo } from './routes/auth.js'
 import type { GoogleProfile, GoogleProvider } from './services/google.js'
@@ -267,6 +274,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   // Ordem importa: filhos antes dos pais.
+  await db.delete(wishlistItems)
   await db.delete(binderSlots)
   await db.delete(binders)
   await db.delete(collectionItems)
@@ -1317,5 +1325,181 @@ describe('binders por Pokémon ou artista (Sprint 7)', () => {
     const { client } = await setup()
     const res = await client.post('/api/collection', { cardId: 'base1-25' })
     expect(await json(res)).toMatchObject({ illustrator: 'Alguém' })
+  })
+})
+
+describe('organização do binder livre e personalização (Sprint 8)', () => {
+  async function setup() {
+    const { client } = await loginAs({ sub: 'google-a', email: 'a@example.com' })
+    const add = async (cardId: string) =>
+      json<{ id: number }>(await client.post('/api/collection', { cardId }))
+    const binder = await json<BinderSummary>(await client.post('/api/binders', { name: 'Livre' }))
+    const put = (position: number, id: number) =>
+      client.put(`/api/binders/${binder.id}/slots/${position}`, { collectionItemId: id })
+    const slots = async () =>
+      (await json<BinderDetail>(await client.get(`/api/binders/${binder.id}`))).slots.map((s) => [
+        s.position,
+        s.item.cardId,
+      ])
+    return { client, add, binder, put, slots }
+  }
+
+  it('mover para bolso vazio e trocar com bolso ocupado', async () => {
+    const { client, add, binder, put, slots } = await setup()
+    const a = await add('base1-25')
+    const b = await add('base1-58')
+    await put(0, a.id)
+    await put(1, b.id)
+    const move = (from: number, to: number) =>
+      client.post(`/api/binders/${binder.id}/move`, { from, to })
+
+    expect((await move(0, 20)).status).toBe(204)
+    expect(await slots()).toEqual([
+      [1, 'base1-58'],
+      [20, 'base1-25'],
+    ])
+    expect((await move(1, 20)).status).toBe(204)
+    expect(await slots()).toEqual([
+      [1, 'base1-25'],
+      [20, 'base1-58'],
+    ])
+    expect((await move(5, 6)).status).toBe(404)
+  })
+
+  it('inserir página em branco empurra as cartas; remover página tira as cartas dela', async () => {
+    const { client, add, binder, put, slots } = await setup()
+    const a = await add('base1-25')
+    const b = await add('base1-58')
+    const c = await add('base1-4-holo')
+    await put(2, a.id) // página 1
+    await put(10, b.id) // página 2
+    await put(19, c.id) // página 3
+    const page = (p: number, action: string) =>
+      client.post(`/api/binders/${binder.id}/pages`, { page: p, action })
+
+    expect((await page(1, 'insert')).status).toBe(204)
+    expect(await slots()).toEqual([
+      [2, 'base1-25'],
+      [19, 'base1-58'],
+      [28, 'base1-4-holo'],
+    ])
+    expect((await page(2, 'remove')).status).toBe(204)
+    expect(await slots()).toEqual([
+      [2, 'base1-25'],
+      [19, 'base1-4-holo'],
+    ])
+  })
+
+  it('organizar: reordena sem buracos pelo critério', async () => {
+    const { client, add, binder, put, slots } = await setup()
+    // Nomes do provedor falso: todas "Pikachu"; o número decide (fakeCard usa localId 25).
+    const a = await add('base1-58')
+    const b = await add('base1-25')
+    await put(7, a.id)
+    await put(30, b.id)
+    const res = await client.post(`/api/binders/${binder.id}/organize`, { by: 'recent' })
+    expect(await json(res)).toEqual({ organized: 2 })
+    expect((await slots()).map((s) => s[0])).toEqual([0, 1])
+    expect((await client.post(`/api/binders/${binder.id}/organize`, { by: 'x' })).status).toBe(400)
+  })
+
+  it('mover, páginas e organizar só valem para binder livre', async () => {
+    const { client } = await setup()
+    const aj = await json<BinderSummary>(
+      await client.post('/api/binders', { name: 'AJ', setId: 'sv09' }),
+    )
+    const base = `/api/binders/${aj.id}`
+    expect((await client.post(`${base}/move`, { from: 0, to: 1 })).status).toBe(400)
+    expect((await client.post(`${base}/pages`, { page: 0, action: 'insert' })).status).toBe(400)
+    expect((await client.post(`${base}/organize`, { by: 'name' })).status).toBe(400)
+  })
+
+  it('cor e capa: personaliza e volta ao padrão; só imagens do TCGdex', async () => {
+    const { client, binder } = await setup()
+    const patch = (body: unknown) => client.patch(`/api/binders/${binder.id}`, body)
+    const cover = 'https://assets.tcgdex.net/pt/sv/sv09/001/high.webp'
+    expect((await patch({ color: 'blue', coverImageUrl: cover })).status).toBe(204)
+    let list = await json<{ items: BinderSummary[] }>(await client.get('/api/binders'))
+    expect(list.items[0]).toMatchObject({ color: 'blue', coverImageUrl: cover, name: 'Livre' })
+
+    expect((await patch({ color: null, coverImageUrl: null })).status).toBe(204)
+    list = await json<{ items: BinderSummary[] }>(await client.get('/api/binders'))
+    expect(list.items[0]).toMatchObject({ color: null, coverImageUrl: null })
+
+    expect((await patch({ color: 'dourado' })).status).toBe(400)
+    expect((await patch({ coverImageUrl: 'https://evil.example/x.webp' })).status).toBe(400)
+  })
+})
+
+describe('lista de desejos (Sprint 8)', () => {
+  type Wish = { id: number; cardId: string; language: string | null; variant: string | null }
+
+  async function setup(sub = 'google-a') {
+    const { client } = await loginAs({ sub, email: `${sub}@example.com` })
+    const wish = async (body: Record<string, unknown>) => client.post('/api/wishlist', body)
+    const list = async () =>
+      (await json<{ items: Wish[] }>(await client.get('/api/wishlist'))).items
+    return { client, wish, list }
+  }
+
+  it('exige login', async () => {
+    expect((await new Client().get('/api/wishlist')).status).toBe(401)
+  })
+
+  it('adiciona desejo geral ou específico; repetido não duplica', async () => {
+    const { wish, list } = await setup()
+    expect((await wish({ cardId: 'base1-25' })).status).toBe(201)
+    await wish({ cardId: 'base1-25' })
+    await wish({ cardId: 'base1-25', language: 'en', variant: 'reverse' })
+    expect((await list()).map((w) => [w.cardId, w.language, w.variant]).sort()).toEqual([
+      ['base1-25', null, null],
+      ['base1-25', 'en', 'reverse'],
+    ])
+    expect((await wish({ cardId: 'base1-25', variant: 'holo' })).status).toBe(400)
+    expect((await wish({ cardId: 'missing' })).status).toBe(404)
+  })
+
+  it('cópia nova risca da lista só o que ela atende', async () => {
+    const { client, wish, list } = await setup()
+    await wish({ cardId: 'base1-25', language: 'en', variant: 'reverse' })
+    await wish({ cardId: 'base1-25', language: 'pt' })
+    await wish({ cardId: 'base1-58' })
+
+    // Português normal: atende o desejo "pt, qualquer versão", não o "en reverse".
+    const res = await client.post('/api/collection', { cardId: 'base1-25' })
+    expect(await json(res)).toMatchObject({ wishlistRemoved: 1 })
+    expect((await list()).map((w) => [w.cardId, w.language]).sort()).toEqual([
+      ['base1-25', 'en'],
+      ['base1-58', null],
+    ])
+
+    const enReverse = await client.post('/api/collection', {
+      cardId: 'base1-25',
+      language: 'en',
+      variant: 'reverse',
+    })
+    expect(await json(enReverse)).toMatchObject({ wishlistRemoved: 1 })
+    expect((await list()).map((w) => w.cardId)).toEqual(['base1-58'])
+  })
+
+  it('o atalho do bolso também risca da lista', async () => {
+    const { client, wish, list } = await setup()
+    await wish({ cardId: 'sv09-001' })
+    const binder = await json<BinderSummary>(
+      await client.post('/api/binders', { name: 'AJ', setId: 'sv09' }),
+    )
+    const res = await client.post(`/api/binders/${binder.id}/slots/0/add`)
+    expect(await json(res)).toMatchObject({ cardId: 'sv09-001', wishlistRemoved: 1 })
+    expect(await list()).toEqual([])
+  })
+
+  it('remover e isolamento entre usuários', async () => {
+    const a = await setup('google-a')
+    const b = await setup('google-b')
+    const w = await json<Wish>(await a.wish({ cardId: 'base1-25' }))
+    expect((await b.client.delete(`/api/wishlist/${w.id}`)).status).toBe(404)
+    expect(await b.list()).toEqual([])
+    expect((await a.client.delete(`/api/wishlist/${w.id}`)).status).toBe(204)
+    expect(await a.list()).toEqual([])
   })
 })

@@ -7,7 +7,10 @@ import {
   CreateBinderSchema,
   OptionalLangQuerySchema,
   PutSlotSchema,
-  RenameBinderSchema,
+  MoveSlotSchema,
+  OrganizeBinderSchema,
+  PageActionSchema,
+  UpdateBinderSchema,
   type BinderTemplateCard,
   type SearchCandidate,
 } from '../../shared/schemas.js'
@@ -18,14 +21,16 @@ import { searchCandidates } from '../services/searchTemplate.js'
 import { buildSetTemplate } from '../services/setTemplate.js'
 import { resolveVariant, snapshotOf, type CollectionService } from '../services/collection.js'
 import type { CardsProvider } from '../services/tcgdex.js'
+import type { WishlistService } from '../services/wishlist.js'
 
 // Este router é montado atrás de `requireAuth`; todos os handlers usam o usuário da sessão.
 export function createBindersRouter(deps: {
   binders: BindersService
   collection: CollectionService
+  wishlist: WishlistService
   cards: CardsProvider
 }) {
-  const { binders, collection, cards } = deps
+  const { binders, collection, wishlist, cards } = deps
   const router = Router()
 
   // Dados do usuário: nunca cachear.
@@ -123,9 +128,29 @@ export function createBindersRouter(deps: {
 
   router.patch('/:id', async (req, res) => {
     const { id: userId } = currentUser(res)
-    const { name } = RenameBinderSchema.parse(req.body)
-    await binders.rename(userId, req.params.id, name)
+    await binders.update(userId, req.params.id, UpdateBinderSchema.parse(req.body))
     res.status(204).end()
+  })
+
+  // Binder livre: mover/trocar cartas, inserir/remover páginas e organizar automaticamente.
+  router.post('/:id/move', async (req, res) => {
+    const { id: userId } = currentUser(res)
+    const { from, to } = MoveSlotSchema.parse(req.body)
+    await binders.move(userId, req.params.id, from, to)
+    res.status(204).end()
+  })
+
+  router.post('/:id/pages', async (req, res) => {
+    const { id: userId } = currentUser(res)
+    const { page, action } = PageActionSchema.parse(req.body)
+    await binders.page(userId, req.params.id, page, action)
+    res.status(204).end()
+  })
+
+  router.post('/:id/organize', async (req, res) => {
+    const { id: userId } = currentUser(res)
+    const { by } = OrganizeBinderSchema.parse(req.body)
+    res.json({ organized: await binders.organize(userId, req.params.id, by) })
   })
 
   router.delete('/:id', async (req, res) => {
@@ -169,7 +194,12 @@ export function createBindersRouter(deps: {
       input.quantity,
     )
     await binders.putSlot(userId, req.params.id, position, item.id)
-    res.status(201).json(await collection.item(userId, item.id))
+    const wishlistRemoved = await wishlist.fulfill(userId, {
+      cardId: item.cardId,
+      language: item.language,
+      variant: item.variant,
+    })
+    res.status(201).json({ ...(await collection.item(userId, item.id)), wishlistRemoved })
   })
 
   router.delete('/:id/slots/:position', async (req, res) => {

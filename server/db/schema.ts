@@ -10,6 +10,7 @@ import {
 } from 'drizzle-orm/sqlite-core'
 import type { Condition, Variant } from '../../shared/copies.js'
 import type { BinderSearch, BinderTemplateCard } from '../../shared/schemas.js'
+import type { BinderColor } from '../../shared/binderStyle.js'
 import type { SetType } from '../../shared/setTypes.js'
 
 /** Contas. O Google é o único provedor por enquanto; `google_id` é o "sub" estável do Google. */
@@ -117,6 +118,8 @@ export const binders = sqliteTable(
     search: text('search', { mode: 'json' }).$type<BinderSearch>(),
     /** Cartas que o usuário tirou do molde: não voltam ao buscar cartas novas. */
     excluded: text('excluded', { mode: 'json' }).$type<string[]>(),
+    color: text('color').$type<BinderColor>(),
+    coverImageUrl: text('cover_image_url'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`(CURRENT_TIMESTAMP)`),
@@ -149,6 +152,31 @@ export const binderSlots = sqliteTable(
     index('binder_slots_item_idx').on(t.collectionItemId),
     check('binder_slots_position_range', sql`${t.position} >= 0`),
   ],
+)
+
+/**
+ * Lista de desejos. `language`/`variant` vazios ('') = qualquer idioma/versão (string vazia e não
+ * NULL para a chave única funcionar: no SQLite, NULLs nunca colidem).
+ */
+export const wishlistItems = sqliteTable(
+  'wishlist_items',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    cardId: text('card_id').notNull(),
+    language: text('language').notNull().default(''),
+    variant: text('variant').notNull().default(''),
+    name: text('name').notNull(),
+    imageUrl: text('image_url'),
+    setName: text('set_name'),
+    localId: text('local_id'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (t) => [uniqueIndex('wishlist_items_uq').on(t.userId, t.cardId, t.language, t.variant)],
 )
 
 export type UserRow = typeof users.$inferSelect
