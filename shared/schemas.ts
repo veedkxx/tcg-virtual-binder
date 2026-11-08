@@ -139,6 +139,11 @@ export const SearchCandidateSchema = CardSummarySchema.extend({ exact: z.boolean
 export type SearchCandidate = z.infer<typeof SearchCandidateSchema>
 export const SearchCandidatesResponseSchema = z.object({ items: z.array(SearchCandidateSchema) })
 
+export const NewBinderCardsResponseSchema = z.object({
+  items: z.array(SearchCandidateSchema),
+  removed: z.array(SearchCandidateSchema),
+})
+
 export const IllustratorsResponseSchema = z.object({ items: z.array(z.string()) })
 
 export const AddCardsToBinderSchema = z.object({

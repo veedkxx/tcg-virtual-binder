@@ -1216,10 +1216,14 @@ describe('binders por Pokémon ou artista (Sprint 7)', () => {
       name: 'Pikachus',
       search: { field: 'name', query: 'Pikachu', sort: 'oldest', cardIds: ['sv09-025'] },
     })
-    const fresh = async () =>
-      (await json<{ items: Candidate[] }>(await client.get(`/api/binders/${binder.id}/new-cards`)))
-        .items
+    const outside = async () =>
+      json<{ items: Candidate[]; removed: Candidate[] }>(
+        await client.get(`/api/binders/${binder.id}/new-cards`),
+      )
+    const fresh = async () => (await outside()).items
     expect(await fresh()).toEqual([])
+    // As desmarcadas na criação aparecem à parte, para poder trazer de volta.
+    expect((await outside()).removed.map((c) => c.id)).toEqual(['base1-25', 'base1-58', 'sv09-030'])
 
     newPikachu = true
     try {

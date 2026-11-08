@@ -72,16 +72,23 @@ export function createBindersRouter(deps: {
       .json(await binders.create(userId, { name, language, set, search: fromSearch, fill }))
   })
 
-  // Binder por Pokémon/artista: cartas da busca que ainda não estão no binder nem foram removidas.
+  // Binder por Pokémon/artista: cartas da busca que não estão no binder. `items` são as novas
+  // (lançadas depois); `removed`, as que o usuário tirou, para poder trazer de volta.
   router.get('/:id/new-cards', async (req, res) => {
     const { id: userId } = currentUser(res)
     const b = await binders.withTemplate(userId, req.params.id)
     if (!b.search) {
       throw new AppError(400, 'BINDER_HAS_NO_SEARCH', 'Esse binder não foi criado por uma busca.')
     }
-    const skip = new Set([...b.template.map((c) => c.id), ...(b.excluded ?? [])])
-    const found = await searchCandidates(cards, b.language as Language, b.search)
-    res.json({ items: found.filter((c) => !skip.has(c.id)) })
+    const inBinder = new Set(b.template.map((c) => c.id))
+    const excluded = new Set(b.excluded ?? [])
+    const outside = (await searchCandidates(cards, b.language as Language, b.search)).filter(
+      (c) => !inBinder.has(c.id),
+    )
+    res.json({
+      items: outside.filter((c) => !excluded.has(c.id)),
+      removed: outside.filter((c) => excluded.has(c.id)),
+    })
   })
 
   // Acrescenta cartas da busca no fim do binder (inclusive as que tinham sido removidas).
