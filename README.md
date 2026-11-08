@@ -38,13 +38,14 @@ drizzle/              migrations geradas pelo drizzle-kit
 | --- | --- | --- |
 | GET | `/api/cards?q=&page=&lang=` | busca por nome (proxy do TCGdex, 20 por página) |
 | GET | `/api/cards/:id?lang=` | detalhe da carta |
-| GET | `/api/collection?lang=` | cópias da coleção + totais |
+| GET | `/api/collection?lang=` | cópias da coleção + totais (sem `lang`: todos os idiomas) |
+| POST | `/api/collection/complete` | completa categoria e tipos das cópias antigas (40 por vez) |
 | POST | `/api/collection` | `{ cardId, language?, variant?, condition?, quantity? }`; se a cópia já existe, **soma** a quantidade |
 | PATCH | `/api/collection/:id` | `{ quantity?, variant?, condition? }`; se virar uma cópia que já existe, as duas se juntam |
 | DELETE | `/api/collection/:id` | remove a cópia |
 | GET | `/api/sets?lang=` | coleções do TCGdex (mais novas primeiro) |
 | GET | `/api/sets/:id?lang=` | coleção com as cartas |
-| GET | `/api/binders?lang=` | binders do usuário |
+| GET | `/api/binders?lang=` | binders do usuário (sem `lang`: todos os idiomas) |
 | POST | `/api/binders` | `{ name, setId?, setType?, fill? }`; com `setId`, monta Core Set (padrão) ou Master Set |
 | GET / PATCH / DELETE | `/api/binders/:id` | detalhe / renomear `{ name }` / apagar (a coleção não muda) |
 | POST | `/api/binders/:id/fill` | coloca as cartas que o usuário tem nos bolsos vazios do molde |
@@ -57,8 +58,9 @@ Erros seguem `{ "error": { "code", "message" } }`.
 
 ## Idiomas
 
-**Português** e **inglês**, escolhidos no cabeçalho; o idioma vale para busca, coleção e binders e
-fica salvo no navegador. Cada cópia da coleção é `(carta, idioma, variante, condição)`.
+Português, inglês, espanhol, francês, alemão e italiano. O seletor do cabeçalho vale para a busca e
+para binders novos e fica salvo no navegador; coleção e binders misturam idiomas (com filtro por
+idioma). Cada cópia da coleção é `(carta, idioma, variante, condição)`.
 
 Para habilitar outro idioma do TCGdex (es, fr, de, it, ja…), adicione o código em `ENABLED_LANGUAGES` e
 o rótulo em `LANGUAGE_LABELS` (`shared/languages.ts`). Nenhuma migration é necessária.

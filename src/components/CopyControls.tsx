@@ -5,6 +5,7 @@ import {
   type Condition,
   type Variant,
 } from '../../shared/copies'
+import { ENABLED_LANGUAGES, LANGUAGE_LABELS, type Language } from '../../shared/languages'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
@@ -127,6 +128,46 @@ export function VariantSelect({
       {[...new Set([value, ...options])].map((v) => (
         <option key={v} value={v}>
           {VARIANT_LABELS[v]}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+/** Selo do idioma da cópia ("PT", "EN"…). */
+export function LanguageBadge({ language, className }: { language: Language; className?: string }) {
+  return (
+    <Badge
+      variant="outline"
+      title={LANGUAGE_LABELS[language]}
+      className={cn('uppercase', className)}
+    >
+      {language}
+    </Badge>
+  )
+}
+
+/** Idioma de uma cópia nova (padrão: o do seletor do cabeçalho). */
+export function CopyLanguageSelect({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: Language
+  onChange: (l: Language) => void
+  disabled?: boolean
+}) {
+  return (
+    <select
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value as Language)}
+      aria-label="Idioma da cópia"
+      className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+    >
+      {ENABLED_LANGUAGES.map((l) => (
+        <option key={l} value={l}>
+          {LANGUAGE_LABELS[l]}
         </option>
       ))}
     </select>

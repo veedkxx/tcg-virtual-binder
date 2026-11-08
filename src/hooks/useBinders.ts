@@ -9,8 +9,7 @@ import { useUiStore } from '@/store/ui'
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : 'Algo deu errado.')
 
 // Tudo começa com 'binders' para invalidar/limpar de uma vez (logout, mudança na coleção).
-const listKey = (userId: string | undefined, language: string) =>
-  ['binders', userId, language] as const
+const listKey = (userId: string | undefined) => ['binders', userId, 'list'] as const
 const detailKey = (userId: string | undefined, id: string) =>
   ['binders', userId, 'detail', id] as const
 
@@ -25,11 +24,10 @@ export function useSets() {
 }
 
 export function useBinders() {
-  const language = useUiStore((s) => s.language)
   const { user } = useAuth()
   return useQuery({
-    queryKey: listKey(user?.id, language),
-    queryFn: () => api.listBinders(language),
+    queryKey: listKey(user?.id),
+    queryFn: () => api.listBinders(),
     enabled: Boolean(user),
   })
 }

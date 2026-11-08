@@ -86,6 +86,9 @@ export const CollectionItemSchema = z.object({
   variant: VariantSchema,
   condition: ConditionSchema,
   quantity: z.number().int().min(1),
+  /** Pokémon, Treinador, Energia… e tipos (Fogo, Água…); null em cópias ainda não completadas. */
+  category: z.string().nullable(),
+  types: z.array(z.string()).nullable(),
   name: z.string(),
   imageUrl: z.string().nullable(),
   setId: z.string().nullable(),
@@ -152,6 +155,11 @@ export type BinderDetail = z.infer<typeof BinderDetailSchema>
 
 export const FillBinderResponseSchema = z.object({ placed: z.number().int() })
 
+export const CompleteCollectionResponseSchema = z.object({
+  updated: z.number().int(),
+  more: z.boolean(),
+})
+
 // ---------- Usuário ----------
 
 export const UserSchema = z.object({
@@ -171,6 +179,11 @@ const QuantitySchema = z.number().int().min(1).max(MAX_QUANTITY)
 
 export const LangQuerySchema = z.object({
   lang: LanguageSchema.default(DEFAULT_LANGUAGE),
+})
+
+/** Coleção e binders: sem `lang`, todos os idiomas (binders e coleção podem misturar idiomas). */
+export const OptionalLangQuerySchema = z.object({
+  lang: LanguageSchema.optional(),
 })
 
 export const SearchQuerySchema = LangQuerySchema.extend({
@@ -222,6 +235,8 @@ export const BinderPositionSchema = z.coerce.number().int().min(0).max(MAX_BINDE
 
 /** Adiciona a carta reservada do bolso à coleção e já coloca no bolso. */
 export const AddToPocketSchema = z.object({
+  /** Sem idioma, vale o do binder. */
+  language: LanguageSchema.optional(),
   variant: VariantSchema.optional(),
   condition: ConditionSchema.default(DEFAULT_CONDITION),
   quantity: QuantitySchema.default(1),

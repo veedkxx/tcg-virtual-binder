@@ -1,4 +1,5 @@
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
+import { categoryInPortuguese, typeInPortuguese } from '../../shared/cardTypes.js'
 import type { Condition, Variant } from '../../shared/copies.js'
 import type { Language } from '../../shared/languages.js'
 import { MAX_QUANTITY } from '../../shared/schemas.js'
@@ -16,6 +17,8 @@ export interface CardSnapshot {
   setName: string | null
   localId: string | null
   rarity: string | null
+  category: string | null
+  types: string[] | null
 }
 
 /** Snapshot gravado na coleção; sempre a partir do TCGdex (servidor), nunca do cliente. */
@@ -29,6 +32,15 @@ export function snapshotOf(card: CardDetail, language: Language): CardSnapshot {
     setName: card.set.name,
     localId: card.localId,
     rarity: card.rarity,
+    ...detailsOf(card),
+  }
+}
+
+/** Categoria e tipos em português, para o filtro juntar cartas de idiomas diferentes. */
+export function detailsOf(card: CardDetail) {
+  return {
+    category: card.category ? categoryInPortuguese(card.category) : null,
+    types: card.types.map(typeInPortuguese),
   }
 }
 
@@ -66,6 +78,8 @@ export function toItem(r: CollectionItemRow, binderCount: number): CollectionIte
     setName: r.setName,
     localId: r.localId,
     rarity: r.rarity,
+    category: r.category,
+    types: r.types,
     binderCount,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
@@ -86,11 +100,17 @@ export function createCollectionService(db: Db) {
   }
 
   return {
-    async list(userId: string, language: Language): Promise<CollectionResponse> {
+    /** Sem idioma, todas as cópias (a coleção mistura idiomas; o filtro é na tela). */
+    async list(userId: string, language?: Language): Promise<CollectionResponse> {
       const rows = await db
         .select({ row: collectionItems, binderCount: binderCountSql })
         .from(collectionItems)
-        .where(and(eq(collectionItems.userId, userId), eq(collectionItems.language, language)))
+        .where(
+          and(
+            eq(collectionItems.userId, userId),
+            language ? eq(collectionItems.language, language) : undefined,
+          ),
+        )
         .orderBy(desc(collectionItems.updatedAt), desc(collectionItems.id))
 
       const items = rows.map((r) => toItem(r.row, r.binderCount))
@@ -106,6 +126,24 @@ export function createCollectionService(db: Db) {
     async get(userId: string, id: number) {
       const [row] = await db.select().from(collectionItems).where(byId(userId, id))
       return row ?? null
+    },
+
+    /** Cópias sem categoria/tipos (de antes da Sprint 6), para completar aos poucos. */
+    async incomplete(userId: string, limit: number) {
+      const rows = await db
+        .select({
+          id: collectionItems.id,
+          cardId: collectionItems.cardId,
+          language: collectionItems.language,
+        })
+        .from(collectionItems)
+        .where(and(eq(collectionItems.userId, userId), isNull(collectionItems.types)))
+        .limit(limit + 1)
+      return { rows: rows.slice(0, limit), more: rows.length > limit }
+    },
+
+    async setDetails(id: number, details: { category: string | null; types: string[] }) {
+      await db.update(collectionItems).set(details).where(eq(collectionItems.id, id))
     },
 
     /** A cópia como a API devolve (com binderCount). */

@@ -63,6 +63,7 @@ export function createBindersService(db: Db) {
         .select({
           id: collectionItems.id,
           cardId: collectionItems.cardId,
+          language: collectionItems.language,
           variant: collectionItems.variant,
           condition: collectionItems.condition,
         })
@@ -70,7 +71,6 @@ export function createBindersService(db: Db) {
         .where(
           and(
             eq(collectionItems.userId, b.userId),
-            eq(collectionItems.language, b.language),
             inArray(
               collectionItems.cardId,
               template.map((c) => c.id),
@@ -83,10 +83,12 @@ export function createBindersService(db: Db) {
         .where(eq(binderSlots.binderId, b.id)),
     ])
 
-    // Com várias cópias da mesma carta, vai a mais comum em melhor estado (normal NM primeiro).
-    // Bolso com variante (Master Set) só aceita aquela variante; sem variante, vale a melhor cópia.
+    // Com várias cópias da mesma carta, vai a do idioma do binder, depois a mais comum em melhor
+    // estado (normal NM primeiro). Bolso com variante (Master Set) só aceita aquela variante.
+    const sameLanguageFirst = (a: { language: string }, b2: { language: string }) =>
+      Number(a.language !== b.language) - Number(b2.language !== b.language)
     const itemByKey = new Map<string, number>()
-    for (const i of [...items].sort(compareCopies)) {
+    for (const i of [...items].sort((x, y) => sameLanguageFirst(x, y) || compareCopies(x, y))) {
       for (const key of [i.cardId, `${i.cardId}|${i.variant}`]) {
         if (!itemByKey.has(key)) itemByKey.set(key, i.id)
       }
@@ -107,12 +109,15 @@ export function createBindersService(db: Db) {
   }
 
   return {
-    async list(userId: string, language: Language) {
+    /** Sem idioma, todos os binders. */
+    async list(userId: string, language?: Language) {
       const rows = await db
         .select({ binder: binders, filled: count(binderSlots.position) })
         .from(binders)
         .leftJoin(binderSlots, eq(binderSlots.binderId, binders.id))
-        .where(and(eq(binders.userId, userId), eq(binders.language, language)))
+        .where(
+          and(eq(binders.userId, userId), language ? eq(binders.language, language) : undefined),
+        )
         .groupBy(binders.id)
         .orderBy(desc(binders.updatedAt), desc(binders.createdAt))
       return rows.map((r) => toSummary(r.binder, r.filled))
@@ -204,9 +209,6 @@ export function createBindersService(db: Db) {
         .from(collectionItems)
         .where(and(eq(collectionItems.id, collectionItemId), eq(collectionItems.userId, userId)))
       if (!item) throw new AppError(404, 'NOT_IN_COLLECTION', 'Essa carta não está na coleção.')
-      if (item.language !== b.language) {
-        throw new AppError(400, 'WRONG_LANGUAGE', 'A carta é de outro idioma que o do binder.')
-      }
 
       if (b.template) {
         const reserved = b.template[position]

@@ -8,6 +8,7 @@ import {
   CardSearchResponseSchema,
   CollectionItemSchema,
   CollectionResponseSchema,
+  CompleteCollectionResponseSchema,
   FillBinderResponseSchema,
   MeResponseSchema,
   SetListResponseSchema,
@@ -64,8 +65,11 @@ export const api = {
   getCard: (id: string, lang: Language) =>
     request(`/api/cards/${encodeURIComponent(id)}?${qs({ lang })}`, CardDetailSchema),
 
-  getCollection: (lang: Language) =>
-    request(`/api/collection?${qs({ lang })}`, CollectionResponseSchema),
+  /** Todas as cópias, em todos os idiomas (o filtro por idioma é na tela). */
+  getCollection: () => request('/api/collection', CollectionResponseSchema),
+
+  completeCollection: () =>
+    request('/api/collection/complete', CompleteCollectionResponseSchema, { method: 'POST' }),
 
   addToCollection: (input: AddToCollectionInput) =>
     request('/api/collection', CollectionItemSchema, { method: 'POST', body: input }),
@@ -78,8 +82,8 @@ export const api = {
 
   listSets: (lang: Language) => request(`/api/sets?${qs({ lang })}`, SetListResponseSchema),
 
-  listBinders: (lang: Language) =>
-    request(`/api/binders?${qs({ lang })}`, BinderListResponseSchema),
+  /** Todos os binders, em todos os idiomas. */
+  listBinders: () => request('/api/binders', BinderListResponseSchema),
 
   getBinder: (id: string) => request(`/api/binders/${encodeURIComponent(id)}`, BinderDetailSchema),
 

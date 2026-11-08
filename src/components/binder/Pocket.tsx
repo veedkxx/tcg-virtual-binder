@@ -1,5 +1,6 @@
 import { Loader2, Plus } from 'lucide-react'
 import { VARIANT_LABELS, VARIANT_SHORT } from '../../../shared/copies'
+import type { Language } from '../../../shared/languages'
 import type { BinderTemplateCard, CollectionItem } from '../../../shared/schemas'
 import { CardImage } from '@/components/CardImage'
 import { Badge } from '@/components/ui/badge'
@@ -26,9 +27,27 @@ interface Props {
   /** Bolso reservado de carta que falta: adiciona à coleção e coloca no bolso num toque. */
   onQuickAdd?: () => void
   busy?: boolean
+  /** Carta de outro idioma que o do binder ganha um selo com o idioma. */
+  binderLanguage?: Language
+  /** Não bate com o filtro do binder: fica apagado. */
+  dimmed?: boolean
 }
 
-export function Pocket({ state, onClick, onQuickAdd, busy }: Props) {
+export function Pocket({ dimmed = false, ...props }: Props) {
+  return (
+    <div className={cn('transition-opacity duration-200', dimmed && 'opacity-15')}>
+      <PocketContent {...props} />
+    </div>
+  )
+}
+
+function PocketContent({
+  state,
+  onClick,
+  onQuickAdd,
+  busy,
+  binderLanguage,
+}: Omit<Props, 'dimmed'>) {
   if (state.kind === 'none') {
     return <div className="aspect-[63/88] rounded-lg bg-muted/30" aria-hidden />
   }
@@ -112,6 +131,14 @@ export function Pocket({ state, onClick, onQuickAdd, busy }: Props) {
       className="group relative rounded-lg outline-none transition-transform hover:-translate-y-0.5 hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-ring"
     >
       <CardImage src={item.imageUrl} alt={item.name} className="shadow-md group-hover:shadow-xl" />
+      {binderLanguage && item.language !== binderLanguage && (
+        <Badge
+          variant="secondary"
+          className="absolute bottom-1 left-1 px-1.5 text-[10px] uppercase shadow sm:text-xs"
+        >
+          {item.language}
+        </Badge>
+      )}
       <Badge className="absolute right-1 top-1 px-1.5 text-[10px] tabular-nums shadow sm:text-xs">
         ×{item.quantity}
         {item.variant !== 'normal' && (

@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { compareCopies, type Variant } from '../../../shared/copies'
 import type { CollectionItem } from '../../../shared/schemas'
 import { CardImage } from '@/components/CardImage'
-import { CopyBadges } from '@/components/CopyControls'
+import { CopyBadges, LanguageBadge } from '@/components/CopyControls'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -115,6 +115,10 @@ export function SlotPicker({ open, onOpenChange, label, onPick, onlyCardId, only
                   />
                   <Badge className="absolute right-2 top-2 shadow">×{item.quantity}</Badge>
                   <span className="truncate px-0.5 text-xs font-medium">{item.name}</span>
+                  <LanguageBadge
+                    language={item.language}
+                    className="absolute left-2 top-2 shadow"
+                  />
                   <CopyBadges
                     variant={item.variant}
                     condition={item.condition}

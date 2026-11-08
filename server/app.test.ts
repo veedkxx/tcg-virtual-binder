@@ -35,11 +35,12 @@ const fakeCard = (id: string, language: Language = 'pt'): CardDetail => ({
   language,
   imageUrl: `https://assets.example/${id}/low.webp`,
   imageHighUrl: `https://assets.example/${id}/high.webp`,
-  category: 'Pokémon',
+  // Em inglês o TCGdex devolve os nomes em inglês; a coleção guarda em português.
+  category: language === 'en' ? 'Pokemon' : 'Pokémon',
   rarity: 'Comum',
   illustrator: 'Alguém',
   hp: 60,
-  types: ['Elétrico'],
+  types: language === 'en' ? ['Lightning'] : ['Elétrico'],
   description: null,
   variants: variantsOf(id).all,
   boosterVariants: variantsOf(id).booster,
@@ -61,6 +62,8 @@ const fakeSet: SetDetail = {
 }
 
 let tcgdexUp = true
+/** Cartas que o TCGdex falso passa a responder 404 (para testar cartas que sumiram). */
+const gone = new Set<string>()
 
 const cards: CardsProvider = {
   async search({ page, pageSize }) {
@@ -72,7 +75,9 @@ const cards: CardsProvider = {
     }
   },
   async get({ id, lang }) {
-    if (id === 'missing') throw new AppError(404, 'CARD_NOT_FOUND', 'Carta não encontrada.')
+    if (id === 'missing' || gone.has(id)) {
+      throw new AppError(404, 'CARD_NOT_FOUND', 'Carta não encontrada.')
+    }
     return fakeCard(id, lang)
   },
   async listSets() {
@@ -991,5 +996,113 @@ describe('/api/binders', () => {
 
     // E o dono não consegue colocar a carta de outra pessoa no próprio binder.
     expect((await a.put(binder.id, 0, theirs.id)).status).toBe(404)
+  })
+})
+
+describe('idiomas misturados (Sprint 6)', () => {
+  type ItemBody = {
+    id: number
+    cardId: string
+    language: string
+    category: string | null
+    types: string[] | null
+  }
+
+  async function setup(sub = 'google-a') {
+    const { client } = await loginAs({ sub, email: `${sub}@example.com` })
+    const add = async (body: Record<string, unknown>) =>
+      json<ItemBody>(await client.post('/api/collection', body))
+    return { client, add }
+  }
+
+  it('sem lang, a coleção traz todos os idiomas; com lang, só aquele', async () => {
+    const { client, add } = await setup()
+    await add({ cardId: 'base1-25', language: 'pt' })
+    await add({ cardId: 'base1-25', language: 'en' })
+    await add({ cardId: 'base1-58', language: 'es' })
+    const all = await json<CollectionBody>(await client.get('/api/collection'))
+    expect(all.items).toHaveLength(3)
+    expect(all.totals).toEqual({ uniqueCards: 2, totalCards: 3 })
+    const en = await json<CollectionBody>(await client.get('/api/collection?lang=en'))
+    expect(en.items).toHaveLength(1)
+  })
+
+  it('a cópia guarda categoria e tipos da carta, em português em qualquer idioma', async () => {
+    const { add } = await setup()
+    expect(await add({ cardId: 'base1-25' })).toMatchObject({
+      category: 'Pokémon',
+      types: ['Elétrico'],
+    })
+    expect(await add({ cardId: 'base1-25', language: 'en' })).toMatchObject({
+      category: 'Pokémon',
+      types: ['Elétrico'],
+    })
+  })
+
+  it('completa categoria e tipos das cópias antigas, só do próprio usuário', async () => {
+    const a = await setup('google-a')
+    const b = await setup('google-b')
+    const old = await a.add({ cardId: 'base1-25' })
+    const missing = await a.add({ cardId: 'base1-99' })
+    const other = await b.add({ cardId: 'base1-25' })
+    // Simula cópias de antes da Sprint 6 (sem tipos); "base1-99" some do TCGdex depois.
+    await db.update(collectionItems).set({ category: null, types: null })
+    gone.add('base1-99')
+    try {
+      const res = await a.client.post('/api/collection/complete')
+      expect(await json(res)).toEqual({ updated: 1, more: false })
+    } finally {
+      gone.delete('base1-99')
+    }
+    const list = await json<{ items: ItemBody[] }>(await a.client.get('/api/collection'))
+    const byId = Object.fromEntries(list.items.map((i) => [i.id, i]))
+    expect(byId[old.id]).toMatchObject({ category: 'Pokémon', types: ['Elétrico'] })
+    expect(byId[missing.id]).toMatchObject({ types: [] })
+    const listB = await json<{ items: ItemBody[] }>(await b.client.get('/api/collection'))
+    expect(listB.items.find((i) => i.id === other.id)?.types).toBeNull()
+  })
+
+  it('binder de coleção aceita a mesma carta em outro idioma', async () => {
+    const { client, add } = await setup()
+    const en = await add({ cardId: 'sv09-003', language: 'en' })
+    const binder = await json<BinderSummary>(
+      await client.post('/api/binders', { name: 'AJ', setId: 'sv09', language: 'pt' }),
+    )
+    const res = await client.put(`/api/binders/${binder.id}/slots/2`, { collectionItemId: en.id })
+    expect(res.status).toBe(204)
+  })
+
+  it('preencher prefere a cópia no idioma do binder e usa outro idioma se não houver', async () => {
+    const { client, add } = await setup()
+    await add({ cardId: 'sv09-001', language: 'en' })
+    await add({ cardId: 'sv09-001', language: 'pt', condition: 'LP' })
+    await add({ cardId: 'sv09-002', language: 'en' })
+    const binder = await json<BinderSummary>(
+      await client.post('/api/binders', { name: 'AJ', setId: 'sv09', language: 'pt', fill: true }),
+    )
+    const d = await json<BinderDetail>(await client.get(`/api/binders/${binder.id}`))
+    expect(d.slots.map((s) => [s.position, s.item.language])).toEqual([
+      [0, 'pt'],
+      [1, 'en'],
+    ])
+  })
+
+  it('atalho do bolso pode adicionar em outro idioma', async () => {
+    const { client } = await setup()
+    const binder = await json<BinderSummary>(
+      await client.post('/api/binders', { name: 'AJ', setId: 'sv09', language: 'pt' }),
+    )
+    const res = await client.post(`/api/binders/${binder.id}/slots/0/add`, { language: 'it' })
+    expect(await json(res)).toMatchObject({ cardId: 'sv09-001', language: 'it' })
+  })
+
+  it('sem lang, a lista de binders traz todos os idiomas', async () => {
+    const { client } = await setup()
+    await client.post('/api/binders', { name: 'PT', language: 'pt' })
+    await client.post('/api/binders', { name: 'FR', language: 'fr' })
+    const all = await json<{ items: BinderSummary[] }>(await client.get('/api/binders'))
+    expect(all.items.map((b) => b.name).sort()).toEqual(['FR', 'PT'])
+    const fr = await json<{ items: BinderSummary[] }>(await client.get('/api/binders?lang=fr'))
+    expect(fr.items.map((b) => b.name)).toEqual(['FR'])
   })
 })

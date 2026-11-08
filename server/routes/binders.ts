@@ -3,7 +3,7 @@ import {
   AddToPocketSchema,
   BinderPositionSchema,
   CreateBinderSchema,
-  LangQuerySchema,
+  OptionalLangQuerySchema,
   PutSlotSchema,
   RenameBinderSchema,
 } from '../../shared/schemas.js'
@@ -30,7 +30,7 @@ export function createBindersRouter(deps: {
 
   router.get('/', async (req, res) => {
     const { id: userId } = currentUser(res)
-    const { lang } = LangQuerySchema.parse(req.query)
+    const { lang } = OptionalLangQuerySchema.parse(req.query)
     res.json({ items: await binders.list(userId, lang) })
   })
 
@@ -85,7 +85,10 @@ export function createBindersRouter(deps: {
     const position = BinderPositionSchema.parse(req.params.position)
     const input = AddToPocketSchema.parse(req.body ?? {})
 
-    const { language, card: reserved } = await binders.reservedCard(userId, req.params.id, position)
+    const reservedFor = await binders.reservedCard(userId, req.params.id, position)
+    const reserved = reservedFor.card
+    // A carta pode entrar em outro idioma que o do binder (mesmo id de carta).
+    const language = input.language ?? reservedFor.language
     const card = await cards.get({ lang: language, id: reserved.id })
     const item = await collection.add(
       userId,

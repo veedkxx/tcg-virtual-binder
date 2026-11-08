@@ -91,6 +91,7 @@ function BinderCover({ binder }: { binder: BinderSummary }) {
           <p className="truncate text-xs text-muted-foreground">
             {binder.set ? binder.set.name : 'Binder livre'}
             {binder.setType && ` · ${SET_TYPE_LABELS[binder.setType]}`}
+            {` · ${binder.language.toUpperCase()}`}
           </p>
         </div>
       </div>
