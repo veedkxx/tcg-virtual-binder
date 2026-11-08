@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { OrganizeBy } from '../../shared/binderStyle'
 import type { Language } from '../../shared/languages'
 import {
   BinderDetailSchema,
@@ -17,6 +18,10 @@ import {
   SetListResponseSchema,
   type AddToCollectionInput,
   type AddToPocketInput,
+  type AddToWishlistInput,
+  type UpdateBinderInput,
+  WishlistItemSchema,
+  WishlistResponseSchema,
   type BinderSearch,
   type UpdateCollectionItemInput,
   type CreateBinderInput,
@@ -94,11 +99,42 @@ export const api = {
   createBinder: (input: CreateBinderInput) =>
     request('/api/binders', BinderSummarySchema, { method: 'POST', body: input }),
 
-  renameBinder: (id: string, name: string) =>
+  /** Nome, cor e capa (null volta ao padrão). */
+  updateBinder: (id: string, patch: UpdateBinderInput) =>
     request(`/api/binders/${encodeURIComponent(id)}`, z.undefined(), {
       method: 'PATCH',
-      body: { name },
+      body: patch,
     }),
+
+  moveSlot: (id: string, from: number, to: number) =>
+    request(`/api/binders/${encodeURIComponent(id)}/move`, z.undefined(), {
+      method: 'POST',
+      body: { from, to },
+    }),
+
+  binderPage: (id: string, page: number, action: 'insert' | 'remove') =>
+    request(`/api/binders/${encodeURIComponent(id)}/pages`, z.undefined(), {
+      method: 'POST',
+      body: { page, action },
+    }),
+
+  organizeBinder: (id: string, by: OrganizeBy) =>
+    request(
+      `/api/binders/${encodeURIComponent(id)}/organize`,
+      z.object({ organized: z.number() }),
+      {
+        method: 'POST',
+        body: { by },
+      },
+    ),
+
+  getWishlist: () => request('/api/wishlist', WishlistResponseSchema),
+
+  addToWishlist: (input: AddToWishlistInput) =>
+    request('/api/wishlist', WishlistItemSchema, { method: 'POST', body: input }),
+
+  removeFromWishlist: (id: number) =>
+    request(`/api/wishlist/${id}`, z.undefined(), { method: 'DELETE' }),
 
   deleteBinder: (id: string) =>
     request(`/api/binders/${encodeURIComponent(id)}`, z.undefined(), { method: 'DELETE' }),

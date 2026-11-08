@@ -7,7 +7,10 @@ import { CreateBinderDialog } from '@/components/CreateBinderDialog'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useBinders } from '@/hooks/useBinders'
+import { CardImage } from '@/components/CardImage'
+import { BINDER_COLOR_CLASSES } from '@/lib/binderColors'
 import { proxied } from '@/lib/images'
+import { cn } from '@/lib/utils'
 
 export function BindersPage() {
   const binders = useBinders()
@@ -72,11 +75,25 @@ function BinderCover({ binder }: { binder: BinderSummary }) {
   return (
     <Link
       to={`/binders/${binder.id}`}
-      className="group flex flex-col justify-between gap-4 rounded-xl border bg-card p-4 transition-colors outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+      className="group relative flex flex-col justify-between gap-4 overflow-hidden rounded-xl border bg-card p-4 pl-5 transition-colors outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
     >
+      {/* Lombada com a cor do binder. */}
+      {binder.color && (
+        <span
+          aria-hidden
+          className={cn(
+            'absolute inset-y-0 left-0 w-1.5',
+            BINDER_COLOR_CLASSES[binder.color].cover,
+          )}
+        />
+      )}
       <div className="flex items-start gap-3">
         <div className="flex h-12 w-20 shrink-0 items-center justify-center rounded-md bg-muted">
-          {binder.set?.logoUrl ? (
+          {binder.coverImageUrl ? (
+            <div className="w-8 -rotate-6 shadow-md transition-transform group-hover:rotate-0">
+              <CardImage src={binder.coverImageUrl} alt="" className="rounded-sm" />
+            </div>
+          ) : binder.set?.logoUrl ? (
             <img
               src={proxied(binder.set.logoUrl)!}
               alt=""

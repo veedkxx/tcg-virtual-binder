@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import type { BinderSearch } from '../../shared/schemas'
+import type { BinderSearch, UpdateBinderInput } from '../../shared/schemas'
+import type { OrganizeBy } from '../../shared/binderStyle'
 import type { SetType } from '../../shared/setTypes'
 import type { AddToPocketInput, BinderDetail, CollectionItem } from '../../shared/schemas'
 import { useAuth } from '@/hooks/useAuth'
@@ -74,13 +75,72 @@ export function useCreateBinder() {
   })
 }
 
-export function useRenameBinder(id: string) {
+/** Nome, cor e capa do binder. */
+export function useUpdateBinder(id: string) {
   const invalidate = useInvalidateBinders()
   return useMutation({
-    mutationFn: (name: string) => api.renameBinder(id, name),
+    mutationFn: (patch: UpdateBinderInput) => api.updateBinder(id, patch),
     onError: (e) => toast.error(errorMessage(e)),
     onSettled: invalidate,
   })
+}
+
+/** Binder livre: mover/trocar cartas, inserir/remover páginas e organizar. */
+export function useBinderLayout(binderId: string) {
+  const qc = useQueryClient()
+  const { user } = useAuth()
+  const key = detailKey(user?.id, binderId)
+  const invalidate = useInvalidateBinders()
+
+  const move = useMutation({
+    mutationFn: ({ from, to }: { from: number; to: number }) => api.moveSlot(binderId, from, to),
+    // Otimista: a carta muda de bolso na hora (e troca com a do destino, se houver).
+    onMutate: async ({ from, to }) => {
+      await qc.cancelQueries({ queryKey: key })
+      const previous = qc.getQueryData<BinderDetail>(key)
+      if (previous) {
+        const slots = previous.slots
+          .map((s) =>
+            s.position === from
+              ? { ...s, position: to }
+              : s.position === to
+                ? { ...s, position: from }
+                : s,
+          )
+          .sort((a, b) => a.position - b.position)
+        qc.setQueryData<BinderDetail>(key, { ...previous, slots })
+      }
+      return { previous }
+    },
+    onError: (e, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(key, ctx.previous)
+      toast.error(errorMessage(e))
+    },
+    onSettled: invalidate,
+  })
+
+  const page = useMutation({
+    mutationFn: ({ page, action }: { page: number; action: 'insert' | 'remove' }) =>
+      api.binderPage(binderId, page, action),
+    onSuccess: (_r, { action, page }) =>
+      toast(
+        action === 'insert'
+          ? `Página em branco inserida (agora é a página ${page + 1}).`
+          : `Página ${page + 1} removida.`,
+      ),
+    onError: (e) => toast.error(errorMessage(e)),
+    onSettled: invalidate,
+  })
+
+  const organize = useMutation({
+    mutationFn: (by: OrganizeBy) => api.organizeBinder(binderId, by),
+    onSuccess: ({ organized }) =>
+      toast.success(`${organized} ${organized === 1 ? 'carta organizada' : 'cartas organizadas'}.`),
+    onError: (e) => toast.error(errorMessage(e)),
+    onSettled: invalidate,
+  })
+
+  return { move, page, organize }
 }
 
 export function useDeleteBinder(id: string) {
@@ -156,7 +216,11 @@ export function useSlotMutations(binderId: string) {
   const addNew = useMutation({
     mutationFn: ({ position, input }: { position: number; input?: AddToPocketInput }) =>
       api.addToPocket(binderId, position, input),
-    onSuccess: (item) => toast.success(`${item.name} adicionada à coleção e ao binder.`),
+    onSuccess: (item) =>
+      toast.success(
+        `${item.name} adicionada à coleção e ao binder.` +
+          (item.wishlistRemoved ? ' Riscada da lista de desejos.' : ''),
+      ),
     onError: (e) => toast.error(errorMessage(e)),
     onSettled: invalidate,
   })

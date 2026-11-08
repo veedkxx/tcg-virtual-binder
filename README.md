@@ -51,7 +51,9 @@ drizzle/              migrations geradas pelo drizzle-kit
 | GET | `/api/search/illustrators?lang=` | lista de artistas |
 | GET / POST | `/api/binders/:id/new-cards` · `/api/binders/:id/cards` | cartas novas/removidas da busca · acrescentar no fim |
 | DELETE | `/api/binders/:id/template/:position` | tira a carta do binder (os bolsos seguintes andam) |
-| GET / PATCH / DELETE | `/api/binders/:id` | detalhe / renomear `{ name }` / apagar (a coleção não muda) |
+| POST | `/api/binders/:id/move` · `/pages` · `/organize` | binder livre: mover/trocar cartas, inserir/remover página, organizar |
+| GET / POST / DELETE | `/api/wishlist` · `/api/wishlist/:id` | lista de desejos (cópia nova que atende o desejo o tira da lista) |
+| GET / PATCH / DELETE | `/api/binders/:id` | detalhe / personalizar `{ name?, color?, coverImageUrl? }` / apagar (a coleção não muda) |
 | POST | `/api/binders/:id/fill` | coloca as cartas que o usuário tem nos bolsos vazios do molde |
 | PUT / DELETE | `/api/binders/:id/slots/:position` | `{ collectionItemId }` coloca/troca / esvazia o bolso |
 | GET | `/api/health?deep=1` | testa banco e TCGdex (503 se algum falhar); sem `deep`, só responde ok |

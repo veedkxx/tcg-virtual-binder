@@ -29,6 +29,7 @@ export function useLogout() {
       // Nada da coleção do usuário anterior pode ficar em cache.
       qc.removeQueries({ queryKey: ['collection'] })
       qc.removeQueries({ queryKey: ['binders'] })
+      qc.removeQueries({ queryKey: ['wishlist'] })
     },
     onError: () => toast.error('Não foi possível sair. Tente de novo.'),
   })

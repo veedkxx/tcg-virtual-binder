@@ -11,14 +11,9 @@
 | 5. Desempenho | Função em São Paulo junto do banco, imagens pela CDN com reserva em inglês, bundle menor, migrations no deploy, CI |
 | 6. Filtros e idiomas | Filtros na coleção e nos binders, binders com idiomas misturados, es/fr/de/it |
 | 7. Binders personalizados | Binder por Pokémon ou artista, remover cartas de binders, artista nos filtros, Grand Master Set |
+| 8. Organização e desejos | Mover/trocar cartas, páginas e organizar no binder livre, capa e cor, lista de desejos |
 
 ## Próximas sprints
-
-### Sprint 8: organização e lista de desejos
-
-- Arrastar e soltar entre bolsos e páginas, inserir/remover página, organizar automaticamente,
-  capa e cor.
-- Lista de desejos.
 
 ### Sprint 9: estatísticas e dados
 
