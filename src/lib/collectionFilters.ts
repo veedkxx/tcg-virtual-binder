@@ -9,13 +9,14 @@ import {
 import { ENABLED_LANGUAGES, LANGUAGE_LABELS, type Language } from '../../shared/languages'
 import type { CollectionItem } from '../../shared/schemas'
 
-export type SortKey = 'recent' | 'name' | 'number' | 'set'
+export type SortKey = 'recent' | 'name' | 'number' | 'set' | 'artist'
 
 export const SORT_LABELS: Record<SortKey, string> = {
   recent: 'Mais recentes',
   name: 'Nome',
   number: 'Coleção e número',
   set: 'Coleção',
+  artist: 'Artista',
 }
 
 /** Filtros da coleção; vazio = sem filtro. Ficam na URL (?lang=pt&type=Fogo…). */
@@ -27,10 +28,19 @@ export interface CollectionFilters {
   type: string
   variant: Variant | ''
   condition: Condition | ''
+  artist: string
   sort: SortKey
 }
 
-export const FILTER_KEYS = ['lang', 'set', 'rarity', 'type', 'variant', 'condition'] as const
+export const FILTER_KEYS = [
+  'lang',
+  'set',
+  'rarity',
+  'type',
+  'artist',
+  'variant',
+  'condition',
+] as const
 
 export function readFilters(params: URLSearchParams): CollectionFilters {
   const pick = <T extends string>(key: string, allowed: readonly T[]): T | '' => {
@@ -46,6 +56,7 @@ export function readFilters(params: URLSearchParams): CollectionFilters {
     type: params.get('type') ?? '',
     variant: pick('variant', VARIANTS),
     condition: pick('condition', CONDITIONS),
+    artist: params.get('artist') ?? '',
     sort: sort && sort in SORT_LABELS ? (sort as SortKey) : 'recent',
   }
 }
@@ -65,6 +76,7 @@ export function matches(item: CollectionItem, f: CollectionFilters) {
   if (f.type && !typesOf(item).includes(f.type)) return false
   if (f.variant && item.variant !== f.variant) return false
   if (f.condition && item.condition !== f.condition) return false
+  if (f.artist && item.illustrator !== f.artist) return false
   if (f.q) {
     const text = normalize([item.name, item.setName, item.localId, item.cardId].join(' '))
     if (
@@ -84,6 +96,15 @@ const byNumber = (a: string | null, b: string | null) =>
 export function sortItems(items: CollectionItem[], sort: SortKey) {
   const sorted = [...items]
   if (sort === 'name') sorted.sort((a, b) => a.name.localeCompare(b.name, 'pt'))
+  if (sort === 'artist') {
+    // Cartas sem artista conhecido vão para o fim.
+    sorted.sort(
+      (a, b) =>
+        Number(!a.illustrator) - Number(!b.illustrator) ||
+        (a.illustrator ?? '').localeCompare(b.illustrator ?? '', 'pt') ||
+        a.name.localeCompare(b.name, 'pt'),
+    )
+  }
   if (sort === 'set') {
     sorted.sort((a, b) => (a.setName ?? '').localeCompare(b.setName ?? '', 'pt'))
   }
@@ -133,5 +154,8 @@ export function filterOptions(items: CollectionItem[]) {
       label: `${c} · ${CONDITION_LABELS[c]}`,
       n: items.filter((i) => i.condition === c).length,
     })),
+    artist: [...count(items.map((i) => i.illustrator))]
+      .map(([value, n]) => ({ value, label: value, n }))
+      .sort(byLabel),
   }
 }

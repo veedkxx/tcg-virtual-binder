@@ -41,6 +41,8 @@ interface Props {
   /** Só em binder livre: abre o seletor para trocar a carta do bolso. */
   onSwap?: (position: number) => void
   onRemove: (position: number) => void
+  /** Binder com molde: tira a carta do binder (o bolso some e os seguintes andam para trás). */
+  onRemoveReserved?: (position: number) => void
   /** Carta que falta: adiciona à coleção e já coloca no bolso. */
   onAddMissing: (position: number, input: AddToPocketInput) => void
   adding: boolean
@@ -55,6 +57,7 @@ export function PocketDialog({
   label,
   onSwap,
   onRemove,
+  onRemoveReserved,
   onAddMissing,
   adding,
   binderLanguage,
@@ -124,6 +127,17 @@ export function PocketDialog({
                   </Button>
                 )}
               </DialogFooter>
+
+              {onRemoveReserved && (
+                <RemoveReserved
+                  // Recomeça a confirmação ao abrir outro bolso.
+                  key={target.position}
+                  onConfirm={() => {
+                    onRemoveReserved(target.position)
+                    onClose()
+                  }}
+                />
+              )}
             </div>
           </div>
         )}
@@ -230,5 +244,34 @@ function MissingInfo({
         Entra na sua coleção e já vai para este bolso. {where}.
       </p>
     </>
+  )
+}
+
+/** Tirar a carta do binder pede confirmação: muda a posição dos bolsos seguintes. */
+function RemoveReserved({ onConfirm }: { onConfirm: () => void }) {
+  const [confirming, setConfirming] = useState(false)
+  if (!confirming) {
+    return (
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        className="justify-self-start text-xs text-muted-foreground underline-offset-4 hover:text-destructive hover:underline"
+      >
+        Remover esta carta do binder
+      </button>
+    )
+  }
+  return (
+    <div className="grid gap-2 rounded-lg border border-destructive/40 p-3 text-sm">
+      <p>A carta sai deste binder e os bolsos seguintes andam uma posição. Sua coleção não muda.</p>
+      <div className="flex gap-2">
+        <Button size="sm" variant="destructive" onClick={onConfirm}>
+          <Trash2 /> Remover do binder
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+          Cancelar
+        </Button>
+      </div>
+    </div>
   )
 }

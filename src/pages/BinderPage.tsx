@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { ArrowLeft, ChevronLeft, ChevronRight, Pencil, Sparkles, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  Search as SearchIcon,
+  Sparkles,
+  Trash2,
+} from 'lucide-react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { compareCopies, type Variant } from '../../shared/copies'
 import type { Language } from '../../shared/languages'
 import { SET_TYPE_LABELS } from '../../shared/setTypes'
 import { POCKETS_PER_PAGE, type BinderDetail, type CollectionItem } from '../../shared/schemas'
+import { NewCardsDialog } from '@/components/binder/NewCardsDialog'
 import { Pocket, type PocketState } from '@/components/binder/Pocket'
 import { PocketDialog, type PocketDialogTarget } from '@/components/binder/PocketDialog'
 import { SlotPicker } from '@/components/binder/SlotPicker'
@@ -34,6 +43,7 @@ import {
   useDeleteBinder,
   useFillBinder,
   useRenameBinder,
+  useRemoveReserved,
   useSlotMutations,
 } from '@/hooks/useBinders'
 import { useCollection } from '@/hooks/useCollection'
@@ -103,6 +113,8 @@ export function BinderPage() {
 function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactNode }) {
   const collection = useCollection()
   const { put, clear, addNew } = useSlotMutations(binder.id)
+  const removeReserved = useRemoveReserved(binder.id)
+  const [newCardsOpen, setNewCardsOpen] = useState(false)
   const fill = useFillBinder(binder.id)
 
   const wide = useMediaQuery(WIDE_QUERY)
@@ -257,7 +269,11 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
           <div className="min-w-0">
             <h1 className="truncate text-2xl font-bold">{binder.name}</h1>
             <p className="text-sm text-muted-foreground">
-              {binder.set ? binder.set.name : 'Binder livre'}
+              {binder.set
+                ? binder.set.name
+                : binder.search
+                  ? `${binder.search.field === 'name' ? 'Pokémon' : 'Artista'}: ${binder.search.query}`
+                  : 'Binder livre'}
               {binder.setType && ` · ${SET_TYPE_LABELS[binder.setType]}`} ·{' '}
               {total
                 ? `${binder.filled}/${total} cartas (${pct}%)`
@@ -280,6 +296,11 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
             >
               <Sparkles /> Colocar as que eu tenho
               {missingOwned > 0 && <span className="tabular-nums">({missingOwned})</span>}
+            </Button>
+          )}
+          {binder.search && (
+            <Button variant="outline" size="sm" onClick={() => setNewCardsOpen(true)}>
+              <SearchIcon /> Buscar cartas novas
             </Button>
           )}
           <RenameButton binder={binder} />
@@ -426,6 +447,10 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
         onlyVariant={picker !== null ? binder.template?.[picker]?.variant : undefined}
       />
 
+      {binder.search && (
+        <NewCardsDialog binderId={binder.id} open={newCardsOpen} onOpenChange={setNewCardsOpen} />
+      )}
+
       <PocketDialog
         // A cópia do bolso vem sempre do binder atual: a quantidade muda enquanto o zoom está aberto.
         target={
@@ -448,6 +473,15 @@ function BinderView({ binder, back }: { binder: BinderDetail; back: React.ReactN
             : undefined
         }
         onRemove={(position) => clear.mutate({ position })}
+        onRemoveReserved={
+          binder.template
+            ? (position) =>
+                removeReserved.mutate({
+                  position,
+                  name: binder.template?.[position]?.name ?? 'A carta',
+                })
+            : undefined
+        }
         onAddMissing={(position, input) =>
           addNew.mutate({ position, input }, { onSuccess: () => setZoom(null) })
         }

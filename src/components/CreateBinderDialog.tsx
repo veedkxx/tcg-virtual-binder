@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
-import { BookOpen, Check, LayoutGrid, Search } from 'lucide-react'
+import { BookOpen, Check, LayoutGrid, Search, Sparkles } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import type { SetSummary } from '../../shared/schemas'
+import type { BinderSearch, SetSummary } from '../../shared/schemas'
 import {
   SET_TYPE_DESCRIPTIONS,
   SET_TYPE_LABELS,
   SET_TYPES,
   type SetType,
 } from '../../shared/setTypes'
+import { SearchPicker } from '@/components/binder/SearchPicker'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -23,7 +24,7 @@ import { useCreateBinder, useSets } from '@/hooks/useBinders'
 import { proxied } from '@/lib/images'
 import { cn } from '@/lib/utils'
 
-type Mode = 'blank' | 'set'
+type Mode = 'blank' | 'set' | 'search'
 
 interface Props {
   open: boolean
@@ -42,6 +43,8 @@ export function CreateBinderDialog({ open, onOpenChange }: Props) {
   const [set, setSet] = useState<SetSummary | null>(null)
   const [fill, setFill] = useState(true)
   const [setType, setSetType] = useState<SetType>('core')
+  const [search, setSearch] = useState<BinderSearch | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const reset = () => {
     setMode('blank')
@@ -50,6 +53,8 @@ export function CreateBinderDialog({ open, onOpenChange }: Props) {
     setSet(null)
     setFill(true)
     setSetType('core')
+    setSearch(null)
+    setSelected(new Set())
   }
 
   const chooseSet = (s: SetSummary) => {
@@ -58,7 +63,17 @@ export function CreateBinderDialog({ open, onOpenChange }: Props) {
     if (!nameTouched) setName(s.name)
   }
 
-  const canSubmit = name.trim().length > 0 && (mode === 'blank' || set !== null)
+  const runSearch = (s: BinderSearch) => {
+    setSearch(s)
+    // Sugere o nome da busca até a pessoa escrever um nome próprio.
+    if (!nameTouched) setName(s.query)
+  }
+
+  const canSubmit =
+    name.trim().length > 0 &&
+    (mode === 'blank' ||
+      (mode === 'set' && set !== null) ||
+      (mode === 'search' && search !== null && selected.size > 0))
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -67,6 +82,7 @@ export function CreateBinderDialog({ open, onOpenChange }: Props) {
       {
         name: name.trim(),
         ...(mode === 'set' ? { setId: set!.id, setType } : {}),
+        ...(mode === 'search' ? { search: { ...search!, cardIds: [...selected] } } : {}),
         fill,
       },
       {
@@ -96,7 +112,7 @@ export function CreateBinderDialog({ open, onOpenChange }: Props) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Tipo de binder">
+          <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Tipo de binder">
             <ModeOption
               active={mode === 'blank'}
               onClick={() => setMode('blank')}
@@ -111,9 +127,25 @@ export function CreateBinderDialog({ open, onOpenChange }: Props) {
               title="De uma coleção"
               description="Um bolso para cada carta da coleção, na ordem."
             />
+            <ModeOption
+              active={mode === 'search'}
+              onClick={() => setMode('search')}
+              icon={<Sparkles className="size-5" />}
+              title="Por Pokémon ou artista"
+              description="Todas as cartas de um Pokémon ou de um artista; você escolhe quais."
+            />
           </div>
 
           {mode === 'set' && <SetPicker selected={set} onSelect={chooseSet} />}
+
+          {mode === 'search' && (
+            <SearchPicker
+              search={search}
+              onSearch={runSearch}
+              selected={selected}
+              onSelectedChange={setSelected}
+            />
+          )}
 
           {mode === 'set' && (
             <div className="grid gap-2" role="radiogroup" aria-label="Tipo de binder da coleção">
@@ -160,7 +192,7 @@ export function CreateBinderDialog({ open, onOpenChange }: Props) {
             />
           </label>
 
-          {mode === 'set' && (
+          {mode !== 'blank' && (
             <label className="flex items-start gap-2 text-sm">
               <input
                 type="checkbox"
